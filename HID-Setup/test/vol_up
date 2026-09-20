@@ -1,0 +1,5 @@
+#!/bin/bash
+echo "turn volume up"
+
+printf '\xE9\x00' > /dev/hidg2
+printf '\x00\x00' > /dev/hidg2
