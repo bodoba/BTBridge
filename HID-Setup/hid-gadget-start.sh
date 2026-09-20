@@ -128,7 +128,7 @@ echo 1 > functions/hid.usb1/subclass
 # Byte 1 = X movement
 # Byte 2 = Y movement
 # Byte 3 = wheel
-echo 7 > functions/hid.usb1/report_length
+echo 5 > functions/hid.usb1/report_length
 
 # HID Report Descriptor for a standard USB mouse.
 #
