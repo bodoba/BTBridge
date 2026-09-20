@@ -1,0 +1,5 @@
+#!/bin/bash
+echo "Mouse right click"
+
+printf '\x02\x00\x00\x00' > /dev/hidg1
+printf '\x00\x00\x00\x00' > /dev/hidg1
