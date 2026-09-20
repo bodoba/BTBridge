@@ -191,5 +191,5 @@ sleep 2
 # - USB HID Consumer Control
 #
 echo musb-hdrc.4.auto > UDC
- 
+
 echo "Composite HID Gadget started successfully."
