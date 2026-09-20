@@ -4,6 +4,7 @@ The script in here enable two USB devices
 
 /dev/hidg0 -> Keyboard
 /dev/hidg1 -> Mouse
+/dev/hidg2 -> Consumer control
 
 and bind these to the OTG controller
 
