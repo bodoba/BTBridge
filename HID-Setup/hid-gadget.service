@@ -1,12 +1,42 @@
 [Unit]
-Description=USB HID Gadget
+# Human-readable service description shown by systemctl.
+Description=Bluetooth HID Bridge USB Gadget
+
+# Ensure that local filesystems are available before the
+# USB gadget is created.
 After=local-fs.target
 Wants=local-fs.target
 
 [Service]
+
+# This service executes a setup script and then exits.
+# The USB gadget remains active in the kernel after the
+# script has finished.
 Type=oneshot
-ExecStart=/usr/local/bin/hid-gadget.sh
+
+# Create and activate the USB composite HID gadget.
+# This script creates:
+#   - HID Keyboard (/dev/hidg0)
+#   - HID Mouse    (/dev/hidg1)
+ExecStart=/usr/local/bin/hid-gadget-start.sh
+
+# Cleanly remove the USB gadget again.
+# This disconnects the virtual USB keyboard and mouse
+# from the host and removes the gadget from ConfigFS.
+ExecStop=/usr/local/bin/hid-gadget-stop.sh
+
+# Keep the service in ACTIVE state even after the
+# startup script has completed successfully.
+#
+# Without this option systemd would immediately consider
+# the service inactive and ExecStop would never be called.
 RemainAfterExit=yes
 
+# Run as root because ConfigFS and USB gadget management
+# require kernel-level privileges.
+User=root
+
 [Install]
+
+# Start automatically during normal multi-user boot.
 WantedBy=multi-user.target
