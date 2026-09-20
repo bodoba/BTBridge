@@ -1,0 +1,12 @@
+[Unit]
+Description=USB HID Gadget
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hid-gadget.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
