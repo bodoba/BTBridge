@@ -1,3 +1,3 @@
 #!/bin/bash
 echo "Move mouse 20 pixels to the right"
-printf '\x00\x14\x00\x00' > /dev/hidg1
+printf '\x00\x10\x00\x00\x00\x00\x00' > /dev/hidg1
