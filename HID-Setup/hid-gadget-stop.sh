@@ -45,6 +45,7 @@ sleep 1
 # before the functions themselves can be removed.
 rm -f configs/c.1/hid.usb0
 rm -f configs/c.1/hid.usb1
+rm -f configs/c.1/hid.usb2
 
 ###############################################################################
 # REMOVE HID FUNCTIONS
@@ -59,6 +60,11 @@ rmdir functions/hid.usb0 2>/dev/null
 #
 # This deletes the HID mouse definition from ConfigFS.
 rmdir functions/hid.usb1 2>/dev/null
+
+# Remove the virtual consumer control function.
+#
+# This deletes the HID consumer control definition from ConfigFS.
+rmdir functions/hid.usb2 2>/dev/null
 
 ###############################################################################
 # REMOVE USB CONFIGURATION

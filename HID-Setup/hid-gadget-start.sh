@@ -141,6 +141,24 @@ printf '\x05\x01\x09\x02\xa1\x01\x09\x01\xa1\x00\x05\x09\x19\x01\x29\x03\x15\x00
 > functions/hid.usb1/report_desc
 
 ###############################################################################
+# HID FUNCTION #3 : CONSUMER CONTROL
+###############################################################################
+
+mkdir -p functions/hid.usb2
+
+# Generic HID Device
+echo 0 > functions/hid.usb2/protocol
+echo 0 > functions/hid.usb2/subclass
+
+# 2-byte report
+echo 2 > functions/hid.usb2/report_length
+
+# # HID Report Descriptor for consumer control
+printf '\x05\x0C\x09\x01\xA1\x01\x15\x00\x26\xFF\x03\x19\x00\x2A\xFF\x03\x75\x10\x95\x01\x81\x00\xC0' \
+> functions/hid.usb2/report_desc
+
+
+###############################################################################
 # ENABLE FUNCTIONS
 ###############################################################################
 
@@ -149,6 +167,9 @@ ln -s functions/hid.usb0 configs/c.1/
 
 # Attach the mouse function to configuration c.1.
 ln -s functions/hid.usb1 configs/c.1/
+
+# Attach the consumer control function to configuration c.1.
+ln -s functions/hid.usb2 configs/c.1/
 
 ###############################################################################
 # ACTIVATE THE GADGET
@@ -167,6 +188,7 @@ sleep 2
 #
 # - USB HID Keyboard
 # - USB HID Mouse
+# - USB HID Consumer Control
 #
 echo musb-hdrc.4.auto > UDC
  
