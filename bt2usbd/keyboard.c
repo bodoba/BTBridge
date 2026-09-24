@@ -18,10 +18,13 @@
 #include <libevdev/libevdev.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include "logging.h"
 #include "keyboard.h"
+#include "keymap.h"
 
 int findKeyboard(void) {
     char event[16];
@@ -66,4 +69,151 @@ int checkForKeyboard(const char *event) {
         } 
     }
     return fd;
+}
+
+KeyType_t classifyKeyEvent(const struct input_event *ev) {
+    KeyType_t result;
+
+    result = KEY_TYPE_INVALID;
+
+    if (ev != NULL) {
+        if (ev->type == EV_KEY) {
+            switch (ev->code) {
+                /* HID modifiers */
+                case KEY_LEFTCTRL:
+                case KEY_RIGHTCTRL:
+                case KEY_LEFTSHIFT:
+                case KEY_RIGHTSHIFT:
+                case KEY_LEFTALT:
+                case KEY_RIGHTALT:
+                case KEY_LEFTMETA:
+                case KEY_RIGHTMETA:
+                    result = KEY_TYPE_MODIFIER;
+                    break;
+
+                /* Consumer Control keys */
+                case KEY_MUTE:
+                case KEY_VOLUMEUP:
+                case KEY_VOLUMEDOWN:
+                case KEY_PLAY:
+                case KEY_PAUSE:
+                case KEY_PLAYPAUSE:
+                case KEY_STOPCD:
+                case KEY_NEXTSONG:
+                case KEY_PREVIOUSSONG:
+                case KEY_RECORD:
+                case KEY_REWIND:
+                case KEY_FASTFORWARD:
+                case KEY_HOMEPAGE:
+                case KEY_BACK:
+                case KEY_FORWARD:
+                case KEY_REFRESH:
+                case KEY_FAVORITES:
+                case KEY_EMAIL:
+                case KEY_CALC:
+                case KEY_COMPUTER:
+                case KEY_BRIGHTNESSUP:
+                case KEY_BRIGHTNESSDOWN:
+                case KEY_SLEEP:
+                case KEY_MICMUTE:
+                case KEY_SEARCH:
+                case KEY_SCALE:
+                case KEY_COFFEE:
+                    result = KEY_TYPE_CONSUMER_CONTROL;
+                    break;
+
+                default:
+                    result = KEY_TYPE_REGULAR;
+                    break;
+            }
+        }
+    }
+    return result;
+}
+
+uint8_t updateModifierState(uint8_t modifier, const struct input_event *ev) {
+    uint8_t mask = 0;
+
+    switch (ev->code) {
+
+        case KEY_LEFTCTRL:
+            mask = 0x01;
+            break;
+
+        case KEY_LEFTSHIFT:
+            mask = 0x02;
+            break;
+
+        case KEY_LEFTALT:
+            mask = 0x04;
+            break;
+
+        case KEY_LEFTMETA:
+            mask = 0x08;
+            break;
+
+        case KEY_RIGHTCTRL:
+            mask = 0x10;
+            break;
+
+        case KEY_RIGHTSHIFT:
+            mask = 0x20;
+            break;
+
+        case KEY_RIGHTALT:
+            mask = 0x40;
+            break;
+
+        case KEY_RIGHTMETA:
+            mask = 0x80;
+            break;
+        
+        default:
+            break;
+    }
+
+    if (mask != 0) {
+        if (ev->value != 0) {
+            modifier |= mask;
+        } else {
+            modifier &= (uint8_t)~mask; 
+        }
+    }
+    return modifier;
+}
+
+bool arrayAdd(uint8_t *array, size_t max, uint8_t value) {
+    bool result = false;
+    if ((array != NULL) && (value != 0)) {
+        for (int i = 0; i < max; i++) {
+            if (array[i] == value) {
+                result = true;
+                break;
+            }
+            if (array[i] == 0) {
+                array[i] = value;
+                result = true;
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+bool arrayRemove(uint8_t *array, size_t max, uint8_t value) {
+    bool result = false;
+    size_t i;
+
+    if (array != NULL && value != 0) {
+        for (i = 0; i < max; i++) {
+           if (array[i] == value) {
+                array[i] = 0;
+                for (int j = i; (j + i) < max; j++)
+                    array[j] = array[j+1];
+                array[max-1] = 0;
+                result = true;
+            }
+        }
+    }
+    return result;
 }

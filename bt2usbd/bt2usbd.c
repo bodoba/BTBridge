@@ -34,6 +34,7 @@
 #include "logging.h"
 #include "daemon.h"
 #include "keyboard.h"
+#include "keymap.h"
 
 /* ----------------------------------------------------------------------------------- *
  * Some globals we can't do without... ;)
@@ -45,6 +46,57 @@ bool   foreground         = false;             // run in foreground, not as daem
  * Prototypes
  * ----------------------------------------------------------------------------------- */
 int  main(int rgc, char *argv[]);
+
+
+/**
+ * Write a keyboard HID report to the USB HID device.
+ *
+ * @param fd HID gadget file descriptor.
+ * @param report Keyboard report to transmit.
+ *
+ * @return true if the report was transmitted successfully,
+ *         false otherwise.
+ */
+bool writeReport(int fd, const void *report, size_t reportSize)
+{
+    bool result = false;
+    size_t written;
+
+    if ((fd >= 0) && (report != NULL)) {
+        written = write(fd, report, reportSize);
+        if (written == reportSize) {
+            result = true;
+        } else {
+            switch (errno) {
+            case EINTR:
+                writeLog(LOG_ERR, "HID write interrupted");
+                break;
+
+            case EAGAIN:
+                writeLog(LOG_ERR, "HID endpoint busy");
+                break;
+
+            case EPIPE:
+                writeLog(LOG_ERR, "USB host disconnected (EPIPE)");
+                break;
+
+            case ESHUTDOWN:
+                writeLog(LOG_WARNING, "USB gadget shutdown");
+                break;
+
+            case ENODEV:
+                writeLog(LOG_WARNING,"HID device removed");
+                break;
+
+            default:
+                writeLog(LOG_ERR, "HID write failed: errno=%d", errno);
+                break;
+            }
+        }
+    }
+
+    return result;
+}
 
 /* ----------------------------------------------------------------------------------- *
  * Main
@@ -101,6 +153,17 @@ int main( int argc, char *argv[] ) {
         }
     }
 
+    // HID Device for Keyboard events 
+    int fdHidKbd = open(HID_KEYBOARD, O_WRONLY|O_NONBLOCK);
+    if (fdHidKbd < 0) writeLog(LOG_ERR, "Failed to open %s", HID_KEYBOARD);
+
+    // report structures
+    KeyReport_t    keyReport;
+    initKeyReport(&keyReport);
+
+    ConsumerReport_t    consumerReport;
+    initConsumerReport(&consumerReport);
+
     // Main loop
     for (;;) {
         FD_ZERO(&readfds);
@@ -137,7 +200,41 @@ int main( int argc, char *argv[] ) {
                 if (ev.value == 2) continue;
 
                 // process event
-                writeLog( LOG_DEBUG, "%s (%s)", libevdev_event_code_get_name( ev.type,ev.code), ev.value ? "Pressed" : "Released");
+                KeyType_t eventClass = classifyKeyEvent(&ev);
+                switch (eventClass) {
+                    case KEY_TYPE_MODIFIER:
+                        keyReport.modifier = updateModifierState(keyReport.modifier, &ev);
+                        break;
+
+                    case KEY_TYPE_CONSUMER_CONTROL:
+                        linuxKeyToConsumer(&consumerReport, &ev);
+                        //writeReport(fdHidKbd, &consumerReport, sizeof(consumerReport));
+                        writeLog( LOG_DEBUG, "C 0x%02x 0x%02x                               | %s",
+                            consumerReport.keys[0], consumerReport.keys[1],
+                            libevdev_event_code_get_name( ev.type,ev.code)
+                        );
+                        break;
+
+                    case KEY_TYPE_REGULAR:
+                        if(ev.value != 0) { // Key press
+                            arrayAdd(keyReport.keys, 6, linuxKeyToHid(&ev));
+                        } else {           // key release
+                            arrayRemove(keyReport.keys, 6, linuxKeyToHid(&ev));
+                        }
+                        writeReport(fdHidKbd, &keyReport, sizeof(keyReport));
+                        writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
+                            keyReport.modifier,
+                            keyReport.keys[0], keyReport.keys[1], keyReport.keys[2],
+                            keyReport.keys[3], keyReport.keys[4], keyReport.keys[5],
+                            libevdev_event_code_get_name( ev.type,ev.code)
+                        );                        
+                        
+                        break;
+
+                    case KEY_TYPE_INVALID:
+                    default:
+                        break;
+                }
             }
 
             if (rcEv == -ENODEV) {

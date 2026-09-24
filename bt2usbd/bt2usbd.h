@@ -24,6 +24,14 @@
 #define DEBUG           0                        /* no debug info by default           */
 #define PID_FILE        "/var/run/bt2usbd.pid"
 #define MAX_PATH_LENGTH 256
+
+/* ----------------------------------------------------------------------------------- *
+ * HID Device files
+ * ----------------------------------------------------------------------------------- */
+#define HID_KEYBOARD "/dev/hidg0"
+#define HID_MOUSE    "/dev/hidg1"
+#define HID_CONSUMER "/dev/hidg2"
+
 /* ----------------------------------------------------------------------------------- *
  * export some globals
  * ----------------------------------------------------------------------------------- */
