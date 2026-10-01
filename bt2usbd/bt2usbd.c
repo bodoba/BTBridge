@@ -57,7 +57,7 @@ int  main(int rgc, char *argv[]);
  * @return true if the report was transmitted successfully,
  *         false otherwise.
  */
-bool writeReport(int fd, const void *report, size_t reportSize)
+bool writeHidReport(int fd, const void *report, size_t reportSize)
 {
     bool result = false;
     size_t written;
@@ -221,7 +221,7 @@ int main( int argc, char *argv[] ) {
                         } else {           // key release
                             arrayRemove(keyReport.keys, 6, linuxKeyToHid(&ev));
                         }
-                        writeReport(fdHidKbd, &keyReport, sizeof(keyReport));
+                        writeHidReport(fdHidKbd, &keyReport, sizeof(keyReport));
                         writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
                             keyReport.modifier,
                             keyReport.keys[0], keyReport.keys[1], keyReport.keys[2],
