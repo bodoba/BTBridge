@@ -18,6 +18,9 @@
 #ifndef BT2USBD_KBD_H
 #define BT2USBD_KBD_H
 
+#include "hidinterface.h"
+
+
 // HID Keypress data
 typedef struct HidKeyboardReport {
     uint8_t modifier;
@@ -36,7 +39,9 @@ typedef enum {
     KEY_TYPE_INVALID = 0,
     KEY_TYPE_MODIFIER,
     KEY_TYPE_CONSUMER_CONTROL,
-    KEY_TYPE_REGULAR
+    KEY_TYPE_REGULAR,
+    KEY_TYPE_TOGGLE_KEY,
+    KEY_TYPE_CAPS_LOCK
 } KeyType_t;
 
 /* *********************************************************************************** *
@@ -127,5 +132,31 @@ static inline void initConsumerReport(ConsumerReport_t *report) {
     for(int i=0; i<2; i++)
         report->keys[i]=0;
 }
+
+/* *********************************************************************************** *
+ * @brief Verwaltet Caps-Lock Toggle-Status
+ * 
+ * Caps-Lock ist ein Toggle-Key: Bei jedem Druck wird der Status umgeschaltet.
+ * Dies muss separat vom Modifier-State verwaltet werden.
+ * 
+ * @param[in,out] capsLockActive Aktueller Caps-Lock Status
+ * @param[in] ev Input-Event
+ * 
+ * @return true wenn Status geändert wurde
+ * *********************************************************************************** */
+bool updateCapsLockState(bool *capsLockActive, struct input_event *ev, HidDevice *hidKbd);
+
+/* *********************************************************************************** *
+ * @brief LED-Report vom Host empfangen und verarbeiten
+ * 
+ * Der Host sendet LED-Status (Num Lock, Caps Lock, Scroll Lock) zurück.
+ * Dies muss synchronisiert werden, um Inkonsistenzen zu vermeiden.
+ * 
+ * @param[in] hidKbd HID-Gerät
+ * @param[in,out] keyReport Aktueller Key-Report
+ * 
+ * @return true wenn LED-Status geändert wurde
+ * *********************************************************************************** */
+bool processHidLedReport(HidDevice *hidKbd, KeyReport_t *keyReport);
 
 #endif

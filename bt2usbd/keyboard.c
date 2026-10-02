@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include "hidinterface.h"
 #include "logging.h"
 #include "keyboard.h"
 #include "keymap.h"
@@ -90,6 +91,17 @@ KeyType_t classifyKeyEvent(const struct input_event *ev) {
                 case KEY_RIGHTMETA:
                     result = KEY_TYPE_MODIFIER;
                     break;
+
+                /* Caps Lock needs special handling */               
+                case KEY_CAPSLOCK:
+                    result = KEY_TYPE_CAPS_LOCK;
+                    break;
+
+                /* Toggle keys (not rpesent on all keyboards)*/
+                case KEY_NUMLOCK:
+                case KEY_SCROLLLOCK:
+                    result = KEY_TYPE_TOGGLE_KEY;
+                    break;                
 
                 /* Consumer Control keys */
                 case KEY_MUTE:
@@ -216,4 +228,70 @@ bool arrayRemove(uint8_t *array, size_t max, uint8_t value) {
         }
     }
     return result;
+}
+
+bool updateCapsLockState(bool *capsLockActive, struct input_event *ev, HidDevice *hidKbd)
+{
+    if (capsLockActive == NULL || ev == NULL) {
+        return false;
+    }
+
+    /**< Nur bei Key-Press verarbeiten (value == 1), nicht bei Release (value == 0) */
+    if (ev->value == 1 && ev->code == KEY_CAPSLOCK) {
+        *capsLockActive = !(*capsLockActive);
+        writeLog(LOG_INFO, "Caps Lock toggled: %s", *capsLockActive ? "ON" : "OFF");
+
+         /**< Sende LED-Report an Host, um Caps-Lock zu aktivieren/deaktivieren */
+        if (hidKbd != NULL && hidKbd->fd >= 0) {
+            /**< LED-Report: [LED-Flags, Reserved]
+             * Bit 0 = Num Lock
+             * Bit 1 = Caps Lock
+             * Bit 2 = Scroll Lock
+             * Bit 3 = Compose
+             * Bit 4 = Kana
+             */
+            uint8_t ledReport[2] = {0, 0};
+            
+            if (*capsLockActive) {
+                ledReport[0] |= 0x02;  /**< Bit 1 = Caps Lock LED */
+            }
+            
+            /**< Schreibe LED-Report direkt (nicht über writeHidReportRobust) */
+            ssize_t written = write(hidKbd->fd, ledReport, sizeof(ledReport));
+            
+            if (written == sizeof(ledReport)) {
+                writeLog(LOG_DEBUG, "LED Report sent to host: 0x%02x (Caps Lock: %s)", 
+                         ledReport[0], *capsLockActive ? "ON" : "OFF");
+            } else {
+                writeLog(LOG_WARNING, "Failed to send LED report to host (written=%ld)", written);
+            }
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool processHidLedReport(HidDevice *hidKbd, KeyReport_t *keyReport)
+{
+    if (hidKbd == NULL || hidKbd->fd < 0) {
+        return false;
+    }
+
+    /**< read LED-Report (non-blocking) */
+    uint8_t ledReport[2];
+    ssize_t n = read(hidKbd->fd, ledReport, sizeof(ledReport));
+    
+    if (n == sizeof(ledReport)) {
+        uint8_t ledStatus = ledReport[0];
+        bool capsLockActive = (ledStatus & 0x02) != 0;  /**< Bit 1 = Caps Lock LED */
+        
+        writeLog(LOG_DEBUG, "LED Report from host: 0x%02x (Caps Lock: %s)", 
+                 ledStatus, capsLockActive ? "ON" : "OFF");
+        
+        return true;
+    }
+    
+    return false;
 }

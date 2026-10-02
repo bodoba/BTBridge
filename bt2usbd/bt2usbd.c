@@ -33,8 +33,10 @@
 #include "bt2usbd.h"
 #include "logging.h"
 #include "daemon.h"
+#include "hidinterface.h"
 #include "keyboard.h"
 #include "keymap.h"
+
 
 /* ----------------------------------------------------------------------------------- *
  * Some globals we can't do without... ;)
@@ -47,56 +49,6 @@ bool   foreground         = false;             // run in foreground, not as daem
  * ----------------------------------------------------------------------------------- */
 int  main(int rgc, char *argv[]);
 
-
-/**
- * Write a keyboard HID report to the USB HID device.
- *
- * @param fd HID gadget file descriptor.
- * @param report Keyboard report to transmit.
- *
- * @return true if the report was transmitted successfully,
- *         false otherwise.
- */
-bool writeHidReport(int fd, const void *report, size_t reportSize)
-{
-    bool result = false;
-    size_t written;
-
-    if ((fd >= 0) && (report != NULL)) {
-        written = write(fd, report, reportSize);
-        if (written == reportSize) {
-            result = true;
-        } else {
-            switch (errno) {
-            case EINTR:
-                writeLog(LOG_ERR, "HID write interrupted");
-                break;
-
-            case EAGAIN:
-                writeLog(LOG_ERR, "HID endpoint busy");
-                break;
-
-            case EPIPE:
-                writeLog(LOG_ERR, "USB host disconnected (EPIPE)");
-                break;
-
-            case ESHUTDOWN:
-                writeLog(LOG_WARNING, "USB gadget shutdown");
-                break;
-
-            case ENODEV:
-                writeLog(LOG_WARNING,"HID device removed");
-                break;
-
-            default:
-                writeLog(LOG_ERR, "HID write failed: errno=%d", errno);
-                break;
-            }
-        }
-    }
-
-    return result;
-}
 
 /* ----------------------------------------------------------------------------------- *
  * Main
@@ -141,7 +93,7 @@ int main( int argc, char *argv[] ) {
 
     bool scanforNewDevice = false;
            
-    // Keyboard connected?
+    // Bluetooth Keyboard connected?
     int  fdKbd              = -1;
     struct libevdev *devKbd = NULL;
     fdKbd = findKeyboard();
@@ -154,8 +106,8 @@ int main( int argc, char *argv[] ) {
     }
 
     // HID Device for Keyboard events 
-    int fdHidKbd = open(HID_KEYBOARD, O_WRONLY|O_NONBLOCK);
-    if (fdHidKbd < 0) writeLog(LOG_ERR, "Failed to open %s", HID_KEYBOARD);
+    HidDevice *hidKbd = initHidDevice(HID_KEYBOARD);
+    if (hidKbd == NULL) writeLog(LOG_ERR, "Failed to initialize HID device for keyboard");
 
     // report structures
     KeyReport_t    keyReport;
@@ -164,19 +116,32 @@ int main( int argc, char *argv[] ) {
     ConsumerReport_t    consumerReport;
     initConsumerReport(&consumerReport);
 
+    /**< Zusätzlicher State für Toggle-Keys */
+    bool capsLockActive = false;
+    uint32_t lastReportTime = 0;
+    const uint32_t MIN_REPORT_INTERVAL_MS = 5;  /**< Mindestabstand zwischen Reports */
+
     // Main loop
     for (;;) {
         FD_ZERO(&readfds);
         int maxFd = -1;
+
         // Watch for keyboard events
         if (fdKbd >= 0) {
             FD_SET(fdKbd, &readfds);
             if (fdKbd > maxFd) maxFd = fdKbd;
         }
-        // watch for changes if input devices
+        
+        // watch for changes of input devices
         if (fdNotify >= 0) {
             FD_SET(fdNotify, &readfds);
             if (fdNotify > maxFd) maxFd = fdNotify;
+        }
+
+         // Check keyboard HID device (for LED-Reports by host)
+        if (hidKbd != NULL && hidKbd->fd >= 0) {
+            FD_SET(hidKbd->fd, &readfds);
+            if (hidKbd->fd > maxFd) maxFd = hidKbd->fd;
         }
 
         // wait until something happends, but no longer than one second
@@ -188,22 +153,43 @@ int main( int argc, char *argv[] ) {
             writeLog(LOG_ERR, "Select Error");
         }
 
+        // Process LED reports from HID device (Host sendet Caps Lock Status)
+        if (hidKbd != NULL && hidKbd->fd >= 0 && FD_ISSET(hidKbd->fd, &readfds)) {
+            processHidLedReport(hidKbd, &keyReport);
+        }
+
         // Process keyboard events
         if (fdKbd >= 0 && FD_ISSET(fdKbd, &readfds)) {
             // Read all pending events
             struct input_event ev;
             int rcEv;
+
             while ((rcEv = libevdev_next_event( devKbd, LIBEVDEV_READ_FLAG_NORMAL, &ev)) == LIBEVDEV_READ_STATUS_SUCCESS) {
+            
                 // ignore non keyboard events
                 if (ev.type != EV_KEY) continue;
+            
                 // Ignore auto-repeat
                 if (ev.value == 2) continue;
 
                 // process event
                 KeyType_t eventClass = classifyKeyEvent(&ev);
+            
                 switch (eventClass) {
                     case KEY_TYPE_MODIFIER:
                         keyReport.modifier = updateModifierState(keyReport.modifier, &ev);
+                        break;
+
+                    case KEY_TYPE_CAPS_LOCK:
+                        /**< Caps-Lock ist ein Toggle-Key - spezielle Behandlung */
+                        if (updateCapsLockState(&capsLockActive, &ev, hidKbd)) {
+                             writeLog(LOG_INFO, "Caps Lock state synchronized: %s", capsLockActive ? "ON" : "OFF");
+                        }
+                        break;
+
+                    case KEY_TYPE_TOGGLE_KEY:
+                        /**< Andere Toggle-Keys (Num Lock, Scroll Lock) */
+                        writeLog(LOG_DEBUG, "Toggle key pressed: %s", libevdev_event_code_get_name(ev.type, ev.code));
                         break;
 
                     case KEY_TYPE_CONSUMER_CONTROL:
@@ -221,7 +207,7 @@ int main( int argc, char *argv[] ) {
                         } else {           // key release
                             arrayRemove(keyReport.keys, 6, linuxKeyToHid(&ev));
                         }
-                        writeHidReport(fdHidKbd, &keyReport, sizeof(keyReport));
+                        writeHidReport(hidKbd, &keyReport, sizeof(keyReport));
                         writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
                             keyReport.modifier,
                             keyReport.keys[0], keyReport.keys[1], keyReport.keys[2],

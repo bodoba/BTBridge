@@ -25,7 +25,7 @@ project (BTBridge C)
 
 set (CMAKE_C_FLAGS "-std=gnu11 -Wall")
 
-add_executable(bt2usbd bt2usbd.c logging.c daemon.c keyboard.c)
+add_executable(bt2usbd bt2usbd.c logging.c daemon.c keyboard.c hidinterface.c)
 
 # libevdev
 target_include_directories( bt2usbd PRIVATE ${LIBEVDEV_INCLUDE_DIRS} )
