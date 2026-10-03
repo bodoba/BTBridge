@@ -118,6 +118,18 @@ int main( int argc, char *argv[] ) {
     bool capsLockActive = false;
     bool numLockActive  = false;
     
+    if (devKbd != NULL) {
+        int capsState = libevdev_get_event_value(devKbd, EV_LED, LED_CAPSL);
+        int numState  = libevdev_get_event_value(devKbd, EV_LED, LED_NUML);
+
+        capsLockActive = (capsState > 0);
+        numLockActive  = (numState > 0);
+
+        writeLog(LOG_INFO, "Initial keyboard LED state: Caps=%s Num=%s",
+                capsLockActive ? "ON" : "OFF",
+                numLockActive  ? "ON" : "OFF");
+    }
+
     // Main loop
     for (;;) {
         FD_ZERO(&readfds);
@@ -256,6 +268,15 @@ int main( int argc, char *argv[] ) {
                         fdKbd = -1;
                     } else {
                         scanforNewDevice = false;
+
+                        /* Re-sync toggle state with the newly (re-)connected keyboard */
+                        int capsState = libevdev_get_event_value(devKbd, EV_LED, LED_CAPSL);
+                        int numState  = libevdev_get_event_value(devKbd, EV_LED, LED_NUML);
+                        capsLockActive = (capsState > 0);
+                        numLockActive  = (numState > 0);
+                        writeLog(LOG_INFO, "Resynced keyboard LED state: Caps=%s Num=%s",
+                                capsLockActive ? "ON" : "OFF",
+                                numLockActive  ? "ON" : "OFF");
                     }
                 }
             }
