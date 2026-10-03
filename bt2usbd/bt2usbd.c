@@ -25,9 +25,11 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <errno.h>
+#include <poll.h>
 
 #include <sys/inotify.h>
 #include <linux/input.h>
+#include <linux/hidraw.h>
 #include <libevdev/libevdev.h>
 
 #include "bt2usbd.h"
@@ -50,6 +52,66 @@ bool   foreground         = false;             // run in foreground, not as daem
 int  main(int rgc, char *argv[]);
 
 
+/**
+ * @brief Testet die HID-Kommunikation (REPARIERT)
+ */
+void testHidCommunication(HidDevice *hidKbd)
+{
+    if (hidKbd == NULL) {
+        writeLog(LOG_ERR, "HID device not initialized");
+        return;
+    }
+
+    writeLog(LOG_INFO, "=== HID Communication Test ===");
+    
+    // Test 1: Input Report senden
+    writeLog(LOG_INFO, "Test 1: Sending input report...");
+    
+    /**< WICHTIG: Genau 8 Bytes, nicht mehr! */
+    uint8_t testReport[8] = {0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
+    
+    ssize_t written = write(hidKbd->fd_input, testReport, sizeof(testReport));
+    writeLog(LOG_INFO, "  Written: %ld bytes (expected %zu)", written, sizeof(testReport));
+    
+    if (written < 0) {
+        writeLog(LOG_ERR, "  Error: %s", strerror(errno));
+        return;
+    }
+    
+    // Test 2: Versuche LED-Report zu lesen
+    writeLog(LOG_INFO, "Test 2: Reading LED report (waiting 2 seconds)...");
+    
+    struct pollfd pfd;
+    pfd.fd = hidKbd->fd_output;
+    pfd.events = POLLIN;
+    
+    int pollRc = poll(&pfd, 1, 2000);
+    
+    if (pollRc > 0) {
+        writeLog(LOG_INFO, "  Poll returned: %d (data available)", pollRc);
+        
+        uint8_t ledReport[8] = {0};
+        ssize_t n = read(hidKbd->fd_output, ledReport, sizeof(ledReport));
+        
+        if (n > 0) {
+            writeLog(LOG_INFO, "  Read: %ld bytes - LED: 0x%02x", n, ledReport[0]);
+        } else if (n == 0) {
+            writeLog(LOG_WARNING, "  Read returned 0 bytes");
+        } else {
+            writeLog(LOG_WARNING, "  Read failed: %s", strerror(errno));
+        }
+    } else if (pollRc == 0) {
+        writeLog(LOG_WARNING, "  Poll timeout - Host did not send LED report!");
+        writeLog(LOG_WARNING, "  This is NORMAL if the Mac has not recognized the new descriptor yet.");
+        writeLog(LOG_WARNING, "  Try: 1) Disconnect USB cable for 10 seconds");
+        writeLog(LOG_WARNING, "       2) Use a different USB port on the Mac");
+        writeLog(LOG_WARNING, "       3) Restart the Mac");
+    } else {
+        writeLog(LOG_ERR, "  Poll error: %s", strerror(errno));
+    }
+    
+    writeLog(LOG_INFO, "=== Test Complete ===");
+}
 /* ----------------------------------------------------------------------------------- *
  * Main
  * ----------------------------------------------------------------------------------- */
@@ -107,7 +169,11 @@ int main( int argc, char *argv[] ) {
 
     // HID Device for Keyboard events 
     HidDevice *hidKbd = initHidDevice(HID_KEYBOARD);
-    if (hidKbd == NULL) writeLog(LOG_ERR, "Failed to initialize HID device for keyboard");
+    if (hidKbd == NULL) {
+        writeLog(LOG_ERR, "Failed to initialize HID device for keyboard");
+    } else {
+        testHidCommunication(hidKbd);
+    }
 
     // report structures
     KeyReport_t    keyReport;
@@ -118,9 +184,8 @@ int main( int argc, char *argv[] ) {
 
     /**< Zusätzlicher State für Toggle-Keys */
     bool capsLockActive = false;
-    uint32_t lastReportTime = 0;
-    const uint32_t MIN_REPORT_INTERVAL_MS = 5;  /**< Mindestabstand zwischen Reports */
-
+    bool numLockActive  = false;
+    
     // Main loop
     for (;;) {
         FD_ZERO(&readfds);
@@ -139,23 +204,27 @@ int main( int argc, char *argv[] ) {
         }
 
          // Check keyboard HID device (for LED-Reports by host)
-        if (hidKbd != NULL && hidKbd->fd >= 0) {
-            FD_SET(hidKbd->fd, &readfds);
-            if (hidKbd->fd > maxFd) maxFd = hidKbd->fd;
+/*        if (hidKbd != NULL && hidKbd->fd_output >= 0) {
+            FD_SET(hidKbd->fd_output, &readfds);
+            if (hidKbd->fd_output > maxFd) maxFd = hidKbd->fd_output;
         }
+*/
 
         // wait until something happends, but no longer than one second
-        tv.tv_sec = 1; 
+        tv.tv_sec = 0; 
+        tv.tv_usec = 100000; // 100 ms
         int rc = select( maxFd + 1, &readfds, NULL, NULL, &tv);
         
         if ( rc < 0 ) {
-            //if (errno == EINTR) continue;
-            writeLog(LOG_ERR, "Select Error");
+            if (errno != EINTR) {
+                writeLog(LOG_ERR, "Select Error: %s (errno=%d)", strerror(errno), errno);
+            } 
+            continue;
         }
 
         // Process LED reports from HID device (Host sendet Caps Lock Status)
-        if (hidKbd != NULL && hidKbd->fd >= 0 && FD_ISSET(hidKbd->fd, &readfds)) {
-            processHidLedReport(hidKbd, &keyReport);
+        if (hidKbd != NULL && hidKbd->fd_output >= 0 ) {
+            processHidLedReport(hidKbd, &capsLockActive, &numLockActive);
         }
 
         // Process keyboard events
@@ -180,18 +249,6 @@ int main( int argc, char *argv[] ) {
                         keyReport.modifier = updateModifierState(keyReport.modifier, &ev);
                         break;
 
-                    case KEY_TYPE_CAPS_LOCK:
-                        /**< Caps-Lock ist ein Toggle-Key - spezielle Behandlung */
-                        if (updateCapsLockState(&capsLockActive, &ev, hidKbd)) {
-                             writeLog(LOG_INFO, "Caps Lock state synchronized: %s", capsLockActive ? "ON" : "OFF");
-                        }
-                        break;
-
-                    case KEY_TYPE_TOGGLE_KEY:
-                        /**< Andere Toggle-Keys (Num Lock, Scroll Lock) */
-                        writeLog(LOG_DEBUG, "Toggle key pressed: %s", libevdev_event_code_get_name(ev.type, ev.code));
-                        break;
-
                     case KEY_TYPE_CONSUMER_CONTROL:
                         linuxKeyToConsumer(&consumerReport, &ev);
                         //writeReport(fdHidKbd, &consumerReport, sizeof(consumerReport));
@@ -202,6 +259,9 @@ int main( int argc, char *argv[] ) {
                         break;
 
                     case KEY_TYPE_REGULAR:
+                    case KEY_TYPE_CAPS_LOCK:       // Caps Lock key
+                    case KEY_TYPE_TOGGLE_KEY:      // Toggle-Keys (Num Lock, Scroll Lock) 
+
                         if(ev.value != 0) { // Key press
                             arrayAdd(keyReport.keys, 6, linuxKeyToHid(&ev));
                         } else {           // key release

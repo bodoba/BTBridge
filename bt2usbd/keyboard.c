@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
+#include <stdbool.h>
 
 #include "hidinterface.h"
 #include "logging.h"
@@ -230,67 +232,52 @@ bool arrayRemove(uint8_t *array, size_t max, uint8_t value) {
     return result;
 }
 
-bool updateCapsLockState(bool *capsLockActive, struct input_event *ev, HidDevice *hidKbd)
+bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive)
 {
-    if (capsLockActive == NULL || ev == NULL) {
+    if (hidKbd == NULL || hidKbd->fd_output < 0 || capsLockActive == NULL || numLockActive == NULL) {
         return false;
     }
 
-    /**< Nur bei Key-Press verarbeiten (value == 1), nicht bei Release (value == 0) */
-    if (ev->value == 1 && ev->code == KEY_CAPSLOCK) {
-        *capsLockActive = !(*capsLockActive);
-        writeLog(LOG_INFO, "Caps Lock toggled: %s", *capsLockActive ? "ON" : "OFF");
+    /**< LED-Report vom Host lesen (non-blocking vom hidraw-Device) */
+    uint8_t ledReport[2] = {0, 0};
+    ssize_t n = read(hidKbd->fd_output, ledReport, sizeof(ledReport));
+    
+    if (n > 0) {
+        uint8_t ledStatus = ledReport[0];
+        bool capsLockFromHost = (ledStatus & 0x02) != 0;  /**< Bit 1 = Caps Lock */
+        bool numLockFromHost = (ledStatus & 0x01) != 0;   /**< Bit 0 = Num Lock */
+        bool scrollLockFromHost = (ledStatus & 0x04) != 0; /**< Bit 2 = Scroll Lock */
+        
+        bool changed = false;
 
-         /**< Sende LED-Report an Host, um Caps-Lock zu aktivieren/deaktivieren */
-        if (hidKbd != NULL && hidKbd->fd >= 0) {
-            /**< LED-Report: [LED-Flags, Reserved]
-             * Bit 0 = Num Lock
-             * Bit 1 = Caps Lock
-             * Bit 2 = Scroll Lock
-             * Bit 3 = Compose
-             * Bit 4 = Kana
-             */
-            uint8_t ledReport[2] = {0, 0};
-            
-            if (*capsLockActive) {
-                ledReport[0] |= 0x02;  /**< Bit 1 = Caps Lock LED */
-            }
-            
-            /**< Schreibe LED-Report direkt (nicht über writeHidReportRobust) */
-            ssize_t written = write(hidKbd->fd, ledReport, sizeof(ledReport));
-            
-            if (written == sizeof(ledReport)) {
-                writeLog(LOG_DEBUG, "LED Report sent to host: 0x%02x (Caps Lock: %s)", 
-                         ledReport[0], *capsLockActive ? "ON" : "OFF");
-            } else {
-                writeLog(LOG_WARNING, "Failed to send LED report to host (written=%ld)", written);
-            }
+        /**< Synchronisiere Caps-Lock Status mit Host */
+        if (*capsLockActive != capsLockFromHost) {
+            *capsLockActive = capsLockFromHost;
+            writeLog(LOG_INFO, "Caps Lock: %s", *capsLockActive ? "ON" : "OFF");
+            changed = true;
         }
 
-        return true;
+        /**< Synchronisiere Num-Lock Status mit Host */
+        if (numLockActive != NULL && *numLockActive != numLockFromHost) {
+            *numLockActive = numLockFromHost;
+            writeLog(LOG_INFO, "Num Lock: %s", *numLockActive ? "ON" : "OFF");
+            changed = true;
+        }
+
+        if (changed) {
+            writeLog(LOG_DEBUG, "LED Report from host: 0x%02x (Num: %s, Caps: %s, Scroll: %s)",
+                     ledStatus,
+                     numLockFromHost ? "ON" : "OFF",
+                     capsLockFromHost ? "ON" : "OFF",
+                     scrollLockFromHost ? "ON" : "OFF");
+        }
+        
+        return changed;
     }
-
-    return false;
-}
-
-bool processHidLedReport(HidDevice *hidKbd, KeyReport_t *keyReport)
-{
-    if (hidKbd == NULL || hidKbd->fd < 0) {
-        return false;
-    }
-
-    /**< read LED-Report (non-blocking) */
-    uint8_t ledReport[2];
-    ssize_t n = read(hidKbd->fd, ledReport, sizeof(ledReport));
     
-    if (n == sizeof(ledReport)) {
-        uint8_t ledStatus = ledReport[0];
-        bool capsLockActive = (ledStatus & 0x02) != 0;  /**< Bit 1 = Caps Lock LED */
-        
-        writeLog(LOG_DEBUG, "LED Report from host: 0x%02x (Caps Lock: %s)", 
-                 ledStatus, capsLockActive ? "ON" : "OFF");
-        
-        return true;
+    /**< EAGAIN ist normal bei non-blocking read */
+    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        writeLog(LOG_WARNING, "Error reading LED report: %s (errno=%d)", strerror(errno), errno);
     }
     
     return false;

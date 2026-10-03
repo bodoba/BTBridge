@@ -17,7 +17,6 @@
 /* *********************************************************************************** */
 #ifndef BT2USBD_KBD_H
 #define BT2USBD_KBD_H
-
 #include "hidinterface.h"
 
 
@@ -134,29 +133,15 @@ static inline void initConsumerReport(ConsumerReport_t *report) {
 }
 
 /* *********************************************************************************** *
- * @brief Verwaltet Caps-Lock Toggle-Status
+ * @brief Verarbeitet LED-Reports vom Host (Output Reports)
  * 
- * Caps-Lock ist ein Toggle-Key: Bei jedem Druck wird der Status umgeschaltet.
- * Dies muss separat vom Modifier-State verwaltet werden.
- * 
- * @param[in,out] capsLockActive Aktueller Caps-Lock Status
- * @param[in] ev Input-Event
- * 
- * @return true wenn Status geändert wurde
- * *********************************************************************************** */
-bool updateCapsLockState(bool *capsLockActive, struct input_event *ev, HidDevice *hidKbd);
-
-/* *********************************************************************************** *
- * @brief LED-Report vom Host empfangen und verarbeiten
- * 
- * Der Host sendet LED-Status (Num Lock, Caps Lock, Scroll Lock) zurück.
- * Dies muss synchronisiert werden, um Inkonsistenzen zu vermeiden.
+ * Liest vom hidraw-Device, nicht vom hidg-Device!
  * 
  * @param[in] hidKbd HID-Gerät
- * @param[in,out] keyReport Aktueller Key-Report
+ * @param[in,out] capsLockActive Aktueller Caps-Lock Status
  * 
  * @return true wenn LED-Status geändert wurde
  * *********************************************************************************** */
-bool processHidLedReport(HidDevice *hidKbd, KeyReport_t *keyReport);
+bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive);
 
 #endif
