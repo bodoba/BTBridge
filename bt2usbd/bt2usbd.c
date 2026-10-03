@@ -47,72 +47,6 @@ int    debug              = DEBUG;             // debug level
 bool   foreground         = false;             // run in foreground, not as daemon
 
 /* ----------------------------------------------------------------------------------- *
- * Prototypes
- * ----------------------------------------------------------------------------------- */
-int  main(int rgc, char *argv[]);
-
-
-/**
- * @brief Testet die HID-Kommunikation (REPARIERT)
- */
-void testHidCommunication(HidDevice *hidKbd)
-{
-    if (hidKbd == NULL) {
-        writeLog(LOG_ERR, "HID device not initialized");
-        return;
-    }
-
-    writeLog(LOG_INFO, "=== HID Communication Test ===");
-    
-    // Test 1: Input Report senden
-    writeLog(LOG_INFO, "Test 1: Sending input report...");
-    
-    /**< WICHTIG: Genau 8 Bytes, nicht mehr! */
-    uint8_t testReport[8] = {0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
-    
-    ssize_t written = write(hidKbd->fd_input, testReport, sizeof(testReport));
-    writeLog(LOG_INFO, "  Written: %ld bytes (expected %zu)", written, sizeof(testReport));
-    
-    if (written < 0) {
-        writeLog(LOG_ERR, "  Error: %s", strerror(errno));
-        return;
-    }
-    
-    // Test 2: Versuche LED-Report zu lesen
-    writeLog(LOG_INFO, "Test 2: Reading LED report (waiting 2 seconds)...");
-    
-    struct pollfd pfd;
-    pfd.fd = hidKbd->fd_output;
-    pfd.events = POLLIN;
-    
-    int pollRc = poll(&pfd, 1, 2000);
-    
-    if (pollRc > 0) {
-        writeLog(LOG_INFO, "  Poll returned: %d (data available)", pollRc);
-        
-        uint8_t ledReport[8] = {0};
-        ssize_t n = read(hidKbd->fd_output, ledReport, sizeof(ledReport));
-        
-        if (n > 0) {
-            writeLog(LOG_INFO, "  Read: %ld bytes - LED: 0x%02x", n, ledReport[0]);
-        } else if (n == 0) {
-            writeLog(LOG_WARNING, "  Read returned 0 bytes");
-        } else {
-            writeLog(LOG_WARNING, "  Read failed: %s", strerror(errno));
-        }
-    } else if (pollRc == 0) {
-        writeLog(LOG_WARNING, "  Poll timeout - Host did not send LED report!");
-        writeLog(LOG_WARNING, "  This is NORMAL if the Mac has not recognized the new descriptor yet.");
-        writeLog(LOG_WARNING, "  Try: 1) Disconnect USB cable for 10 seconds");
-        writeLog(LOG_WARNING, "       2) Use a different USB port on the Mac");
-        writeLog(LOG_WARNING, "       3) Restart the Mac");
-    } else {
-        writeLog(LOG_ERR, "  Poll error: %s", strerror(errno));
-    }
-    
-    writeLog(LOG_INFO, "=== Test Complete ===");
-}
-/* ----------------------------------------------------------------------------------- *
  * Main
  * ----------------------------------------------------------------------------------- */
 int main( int argc, char *argv[] ) {
@@ -171,8 +105,6 @@ int main( int argc, char *argv[] ) {
     HidDevice *hidKbd = initHidDevice(HID_KEYBOARD);
     if (hidKbd == NULL) {
         writeLog(LOG_ERR, "Failed to initialize HID device for keyboard");
-    } else {
-        testHidCommunication(hidKbd);
     }
 
     // report structures
@@ -204,15 +136,14 @@ int main( int argc, char *argv[] ) {
         }
 
          // Check keyboard HID device (for LED-Reports by host)
-/*        if (hidKbd != NULL && hidKbd->fd_output >= 0) {
-            FD_SET(hidKbd->fd_output, &readfds);
-            if (hidKbd->fd_output > maxFd) maxFd = hidKbd->fd_output;
+        if (hidKbd != NULL && hidKbd->fd >= 0) {
+            FD_SET(hidKbd->fd, &readfds);
+            if (hidKbd->fd > maxFd) maxFd = hidKbd->fd;
         }
-*/
 
         // wait until something happends, but no longer than one second
-        tv.tv_sec = 0; 
-        tv.tv_usec = 100000; // 100 ms
+        tv.tv_sec  = 1; 
+        tv.tv_usec = 0;
         int rc = select( maxFd + 1, &readfds, NULL, NULL, &tv);
         
         if ( rc < 0 ) {
@@ -223,7 +154,7 @@ int main( int argc, char *argv[] ) {
         }
 
         // Process LED reports from HID device (Host sendet Caps Lock Status)
-        if (hidKbd != NULL && hidKbd->fd_output >= 0 ) {
+        if (hidKbd != NULL && hidKbd->fd >= 0 ) {
             processHidLedReport(hidKbd, &capsLockActive, &numLockActive);
         }
 

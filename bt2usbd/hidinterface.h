@@ -31,10 +31,8 @@
  * Kommunikation mit einem HID-Gerät über USB-OTG.
  * *********************************************************************************** */
 typedef struct {
-    int fd_output;                   /**< File-Deskriptor für Output Reports (hidraw) */
-    int fd_input;                    /**< File-Deskriptor für Input Reports (hidg) */
+    int fd;                          /**< File-Descriptor for input and output Reports (hidg) */
     const char *devicePath;          /**< Pfad zum HID-Gerät (hidg) */
-    const char *hidrawPath;          /**< Pfad zum hidraw-Device */
     time_t lastErrorTime;            /**< Zeitstempel des letzten Fehlers */
     int consecutiveErrors;           /**< Anzahl aufeinanderfolgender Fehler */
 } HidDevice;

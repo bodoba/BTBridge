@@ -133,14 +133,17 @@ static inline void initConsumerReport(ConsumerReport_t *report) {
 }
 
 /* *********************************************************************************** *
- * @brief Verarbeitet LED-Reports vom Host (Output Reports)
- * 
- * Liest vom hidraw-Device, nicht vom hidg-Device!
- * 
- * @param[in] hidKbd HID-Gerät
- * @param[in,out] capsLockActive Aktueller Caps-Lock Status
- * 
- * @return true wenn LED-Status geändert wurde
+ * @brief Processes LED Output Reports sent by the host.
+ *
+ * Reads from the gadget's hidg device - the kernel's
+ * usb_f_hid driver delivers host-originated Output Reports via
+ * this single bidirectional character device.
+ *
+ * @param[in] hidKbd HID device
+ * @param[in,out] capsLockActive Current Caps Lock state
+ * @param[in,out] numLockActive  Current Num Lock state
+ *
+ * @return true if the LED state changed
  * *********************************************************************************** */
 bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive);
 

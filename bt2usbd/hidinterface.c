@@ -25,44 +25,6 @@
 #include "logging.h"
 #include "hidinterface.h"
 
-
-/* *********************************************************************************** *
- * @brief Findet das hidraw-Device für ein gegebenes hidg-Device
- * 
- * Der hidg-Device ist nur für Input, das hidraw-Device für Input+Output.
- * Beispiel: /dev/hidg0 -> /dev/hidraw0
- * 
- * @param[in] hidgPath Pfad zum hidg-Device (z.B. "/dev/hidg0")
- * 
- * @return Pfad zum entsprechenden hidraw-Device, oder NULL
- * *********************************************************************************** */
-char* findHidrawDevice(const char *hidgPath)
-{
-    if (hidgPath == NULL) {
-        return NULL;
-    }
-
-    /**< Extrahiere die Nummer aus hidg-Path */
-    int hidgNum = -1;
-    if (sscanf(hidgPath, "/dev/hidg%d", &hidgNum) != 1) {
-        writeLog(LOG_ERR, "Invalid hidg path: %s", hidgPath);
-        return NULL;
-    }
-
-    /**< Konstruiere hidraw-Path */
-    static char hidrawPath[256];
-    snprintf(hidrawPath, sizeof(hidrawPath), "/dev/hidraw%d", hidgNum);
-
-    /**< Überprüfe, ob Device existiert */
-    if (access(hidrawPath, F_OK) == 0) {
-        writeLog(LOG_DEBUG, "Found hidraw device: %s", hidrawPath);
-        return hidrawPath;
-    }
-
-    writeLog(LOG_WARNING, "hidraw device not found: %s", hidrawPath);
-    return NULL;
-}
-
 /* *********************************************************************************** *
  * @brief Opens an HID device
  * 
@@ -90,7 +52,7 @@ int openHidDevice(const char *devicePath)
         return -1;
     }
 
-    int fd = open(devicePath, O_WRONLY | O_NONBLOCK);
+    int fd = open(devicePath, O_RDWR | O_NONBLOCK);
     
     if (fd < 0) {
         int err = errno;
@@ -100,33 +62,6 @@ int openHidDevice(const char *devicePath)
     }
 
     writeLog(LOG_INFO, "HID device opened successfully: %s (fd=%d)", devicePath, fd);
-    return fd;
-}
-
-/* *********************************************************************************** *
- * @brief Öffnet das hidraw-Device für Output Reports
- * 
- * @param[in] hidrawPath Pfad zum hidraw-Device (z.B. "/dev/hidraw0")
- * 
- * @return File-Deskriptor (>= 0) bei Erfolg, -1 bei Fehler
- * *********************************************************************************** */
-int openHidrawDevice(const char *hidrawPath)
-{
-    if (hidrawPath == NULL) {
-        writeLog(LOG_DEBUG, "No hidraw device specified");
-        return -1;
-    }
-
-    int fd = open(hidrawPath, O_RDWR | O_NONBLOCK);
-    
-    if (fd < 0) {
-        int err = errno;
-        writeLog(LOG_WARNING, "Failed to open hidraw device '%s': %s (errno=%d)", 
-                 hidrawPath, strerror(err), err);
-        return -1;
-    }
-
-    writeLog(LOG_INFO, "Hidraw device opened successfully: %s (fd=%d)", hidrawPath, fd);
     return fd;
 }
 
@@ -182,56 +117,35 @@ int closeHidDevice(int fd)
  * @see HID_RECONNECT_RETRY_COUNT
  * @see HID_RECONNECT_DELAY_MS
  * *********************************************************************************** */
-static bool reconnectHidDevice(HidDevice *device)
-{
-    if (device == NULL || device->devicePath == NULL) {
-        return false;
-    }
+static bool reconnectHidDevice(HidDevice *device) {
+	int attempt;
 
-    writeLog(LOG_INFO, "Attempting HID reconnect...");
-    
-    // Close the old device
-    if (device->fd_input >= 0) {
-        closeHidDevice(device->fd_input);
-        device->fd_input = -1;
-    }
+	if (device == NULL || device->devicePath == NULL) {
+		return false;
+	}
 
-    if (device->fd_output >= 0) {
-        closeHidDevice(device->fd_output);
-        device->fd_output = -1;
-    }
+	writeLog(LOG_INFO, "Attempting HID reconnect...");
 
-    // Retry using an exponential backoff strategy
-    for (int attempt = 0; attempt < HID_RECONNECT_RETRY_COUNT; attempt++) {
-        usleep(HID_RECONNECT_DELAY_MS * 1000 * (1 << attempt)); // 500ms, 1s, 2s, 4s, 8s
-        
-        /**< Öffne Input Device (hidg) */
-        device->fd_input = openHidDevice(device->devicePath);
-        if (device->fd_input < 0) {
-            writeLog(LOG_ERR, "Failed to open HID device: %s", device->devicePath);
-            free((void *)device->devicePath);
-            free(device);
-            return NULL;
-        } else {
-            /**< Finde und öffne Output Device (hidraw) */
-            char *hidrawPath = findHidrawDevice(device->devicePath);
-            if (hidrawPath != NULL) {
-                device->hidrawPath = strdup(hidrawPath);
-                device->fd_output = openHidrawDevice(hidrawPath);
-                if (device->fd_output < 0) {
-                    writeLog(LOG_WARNING, "Could not open hidraw device for LED reports");
-                }
-            } else {
-                device->hidrawPath = NULL;
-                device->fd_output = -1;
-            }
-            writeLog(LOG_INFO, "Reconnect successful after %d attempts", attempt);
-            return true;  /**< Reconnect successful */
-        }
-    }
-    writeLog(LOG_ERR, "HID reconnect failed after %d attempts", HID_RECONNECT_RETRY_COUNT);
-    return false;
-}
+	if (device->fd >= 0) {
+		closeHidDevice(device->fd);
+		device->fd = -1;
+	}
+
+	for (attempt = 0; attempt < HID_RECONNECT_RETRY_COUNT; attempt++) {
+		usleep(HID_RECONNECT_DELAY_MS * 1000 * (1 << attempt));
+
+		device->fd = openHidDevice(device->devicePath);
+		if (device->fd >= 0) {
+			writeLog(LOG_INFO, "Reconnect successful after %d attempt(s)", attempt + 1);
+			device->consecutiveErrors = 0;
+			return true;
+		}
+
+		writeLog(LOG_WARNING, "Reconnect attempt %d/%d failed", attempt + 1, HID_RECONNECT_RETRY_COUNT);
+	}
+
+	writeLog(LOG_ERR, "HID reconnect failed after %d attempts", HID_RECONNECT_RETRY_COUNT);
+return false;}
 
 /* *********************************************************************************** */
 /*                       P U B L I C  I N T E R F A C E                                */
@@ -257,26 +171,13 @@ HidDevice* initHidDevice(const char *devicePath)
         return NULL;
     }
 
-    /**< Öffne Input Device (hidg) */
-    device->fd_input = openHidDevice(devicePath);
-    if (device->fd_input < 0) {
+    /**< Öffne Input/Output Device (hidg) */
+    device->fd = openHidDevice(devicePath);
+    if (device->fd < 0) {
         writeLog(LOG_ERR, "Failed to open HID device: %s", devicePath);
         free((void *)device->devicePath);
         free(device);
         return NULL;
-    }
-
-    /**< Finde und öffne Output Device (hidraw) */
-    char *hidrawPath = findHidrawDevice(devicePath);
-    if (hidrawPath != NULL) {
-        device->hidrawPath = strdup(hidrawPath);
-        device->fd_output = openHidrawDevice(hidrawPath);
-        if (device->fd_output < 0) {
-            writeLog(LOG_WARNING, "Could not open hidraw device for LED reports");
-        }
-    } else {
-        device->hidrawPath = NULL;
-        device->fd_output = -1;
     }
 
     device->lastErrorTime = 0;
@@ -288,7 +189,7 @@ HidDevice* initHidDevice(const char *devicePath)
 
 bool writeHidReport(HidDevice *device, const void *report, size_t reportSize)
 {
-    if (device == NULL || device->fd_input < 0 || report == NULL) {
+    if (device == NULL || device->fd < 0 || report == NULL) {
         writeLog(LOG_ERR, "Invalid parameters for HID write");
         return false;
     }
@@ -299,7 +200,7 @@ bool writeHidReport(HidDevice *device, const void *report, size_t reportSize)
     int retry_delay = RETRY_DELAY_US;
 
     while (retry_count < MAX_RETRIES) {
-        ssize_t written = write(device->fd_input, report, reportSize);
+        ssize_t written = write(device->fd, report, reportSize);
 
         if ((size_t)written == reportSize) {
             /**< Successful write */
@@ -349,7 +250,7 @@ bool writeHidReport(HidDevice *device, const void *report, size_t reportSize)
             if (reconnectHidDevice(device)) {
                 /**< Reconnect successful - one retry attempt after reconnect */
                 writeLog(LOG_INFO, "Retrying HID write after successful reconnect");
-                ssize_t retry_written = write(device->fd_input, report, reportSize);
+                ssize_t retry_written = write(device->fd, report, reportSize);
                 
                 if ((size_t)retry_written == reportSize) {
                     device->consecutiveErrors = 0;
@@ -366,7 +267,7 @@ bool writeHidReport(HidDevice *device, const void *report, size_t reportSize)
             
             if (reconnectHidDevice(device)) {
                 writeLog(LOG_INFO, "Retrying HID write after gadget restart");
-                ssize_t retry_written = write(device->fd_input, report, reportSize);
+                ssize_t retry_written = write(device->fd, report, reportSize);
                 
                 if ((size_t)retry_written == reportSize) {
                     device->consecutiveErrors = 0;
@@ -381,7 +282,7 @@ bool writeHidReport(HidDevice *device, const void *report, size_t reportSize)
             
             if (reconnectHidDevice(device)) {
                 writeLog(LOG_INFO, "Retrying HID write after device reconnection");
-                ssize_t retry_written = write(device->fd_input, report, reportSize);
+                ssize_t retry_written = write(device->fd, report, reportSize);
                 
                 if ((size_t)retry_written == reportSize) {
                     device->consecutiveErrors = 0;
@@ -412,14 +313,10 @@ bool writeHidReport(HidDevice *device, const void *report, size_t reportSize)
 void cleanupHidDevice(HidDevice *device)
 {
     if (device != NULL) {
-        if (device->fd_input >= 0) {
-            closeHidDevice(device->fd_input);
-        }
-        if (device->fd_output >= 0) {
-            closeHidDevice(device->fd_output);
+        if (device->fd >= 0) {
+            closeHidDevice(device->fd);
         }
         free((void *)device->devicePath);
-        free((void *)device->hidrawPath);
         free(device);
     }
 }

@@ -215,32 +215,33 @@ bool arrayAdd(uint8_t *array, size_t max, uint8_t value) {
 }
 
 bool arrayRemove(uint8_t *array, size_t max, uint8_t value) {
-    bool result = false;
-    size_t i;
+	bool result = false;
+	size_t i;
 
-    if (array != NULL && value != 0) {
-        for (i = 0; i < max; i++) {
-           if (array[i] == value) {
-                array[i] = 0;
-                for (int j = i; (j + i) < max; j++)
-                    array[j] = array[j+1];
-                array[max-1] = 0;
-                result = true;
-            }
-        }
-    }
-    return result;
+	if (array != NULL && value != 0) {
+		for (i = 0; i < max; i++) {
+			if (array[i] == value) {
+				for (size_t j = i; (j + 1) < max; j++) {
+					array[j] = array[j + 1];
+				}
+				array[max - 1] = 0;
+				result = true;
+				break;  /* value found and removed, stop searching */
+			}
+		}
+	}
+	return result;
 }
 
 bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive)
 {
-    if (hidKbd == NULL || hidKbd->fd_output < 0 || capsLockActive == NULL || numLockActive == NULL) {
+    if (hidKbd == NULL || hidKbd->fd < 0 || capsLockActive == NULL || numLockActive == NULL) {
         return false;
     }
 
     /**< LED-Report vom Host lesen (non-blocking vom hidraw-Device) */
     uint8_t ledReport[2] = {0, 0};
-    ssize_t n = read(hidKbd->fd_output, ledReport, sizeof(ledReport));
+    ssize_t n = read(hidKbd->fd, ledReport, sizeof(ledReport));
     
     if (n > 0) {
         uint8_t ledStatus = ledReport[0];
