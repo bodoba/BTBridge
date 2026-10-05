@@ -19,21 +19,30 @@
 #define BT2USBD_KBD_H
 #include "hidinterface.h"
 
+#define MAX_SIMULTANEOUS_KEYS           6
+#define MAX_SIMULTANEOUS_CONSUMER_KEYS  2
 
-// HID Keypress data
+/* *********************************************************************************** *
+ * @struct HidKeyboardReport
+ * @brief Structure representing a standard USB HID keyboard report.
+ * *********************************************************************************** */
 typedef struct HidKeyboardReport {
-    uint8_t modifier;
-    uint8_t reserved;
-    uint8_t keys[6];
+    uint8_t modifier;                        /** Modufier key bitmap (Ctrl, Shift, Alt, GUI) */
+    uint8_t reserved;                        /** Reserved byte (always 0) */
+    uint8_t keys[MAX_SIMULTANEOUS_KEYS];     /** Array of up to 6 simultaneous key presses (HID key codes) */  
 } KeyReport_t;
 
+/* *********************************************************************************** *
+ * @struct HidConsumerReport
+ * @brief Structure representing a standard USB HID consumer control report.
+ * *********************************************************************************** */
 typedef struct HidConsumerReport {
-    uint8_t keys[2];
+    uint8_t keys[MAX_SIMULTANEOUS_CONSUMER_KEYS];     
 } ConsumerReport_t;
 
-/**
+/* *********************************************************************************** *
  * Classification of keyboard events for HID forwarding.
- */
+ * *********************************************************************************** */
 typedef enum {
     KEY_TYPE_INVALID = 0,
     KEY_TYPE_MODIFIER,
@@ -118,7 +127,7 @@ bool arrayRemove(uint8_t *array, size_t max, uint8_t value);
 static inline void initKeyReport(KeyReport_t *report) {
     report->modifier = 0;
     report->reserved = 0;
-    for(int i=0; i<6; i++)
+    for(int i=0; i<MAX_SIMULTANEOUS_KEYS; i++)
         report->keys[i]=0;
 }
 
@@ -128,7 +137,7 @@ static inline void initKeyReport(KeyReport_t *report) {
  * @param report pointer to comsumerReport structure
  * *********************************************************************************** */
 static inline void initConsumerReport(ConsumerReport_t *report) {
-    for(int i=0; i<2; i++)
+    for(int i=0; i<MAX_SIMULTANEOUS_CONSUMER_KEYS; i++)
         report->keys[i]=0;
 }
 

@@ -23,7 +23,7 @@
 #include <linux/input-event-codes.h>
 
 /* *********************************************************************************** *
- * Linux EV_KEY code to USB HID Usage mapping.
+ * @brief EV_KEY code to USB HID Usage mapping.
  *
  * HID Usage Page:
  * 0x07 - Keyboard/Keypad
@@ -146,7 +146,7 @@ static const uint8_t hidKeyMap[KEY_MAX + 1] = {
 };
 
 /* *********************************************************************************** *
-* Linux EV_KEY to HID Consumer Control Usage mapping.
+* @brief EV_KEY to HID Consumer Control Usage mapping.
 *
 * HID Usage Page 0x0C (Consumer Devices)
 *
@@ -216,8 +216,8 @@ static inline void linuxKeyToConsumer(ConsumerReport_t *report, const struct inp
     }  
 } 
 
-/**
- * Convert a Linux input event key code into a USB HID key code.
+/* *********************************************************************************** *
+ * @brief Convert a Linux input event key code into a USB HID key code.
  *
  * The function expects a regular key event. Modifier keys
  * and Consumer Control keys must be handled separately.
@@ -225,7 +225,7 @@ static inline void linuxKeyToConsumer(ConsumerReport_t *report, const struct inp
  * @param ev Linux input event.
  *
  * @return USB HID usage code or 0 if unsupported.
- */
+ * *********************************************************************************** */
 static inline uint8_t linuxKeyToHid(const struct input_event *ev) {
     uint8_t hidCode = 0;
     if (ev != NULL) {

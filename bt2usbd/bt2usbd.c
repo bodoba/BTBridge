@@ -208,9 +208,9 @@ int main( int argc, char *argv[] ) {
                     case KEY_TYPE_TOGGLE_KEY:      // Toggle-Keys (Num Lock, Scroll Lock) 
 
                         if(ev.value != 0) { // Key press
-                            arrayAdd(keyReport.keys, 6, linuxKeyToHid(&ev));
+                            arrayAdd(keyReport.keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
                         } else {           // key release
-                            arrayRemove(keyReport.keys, 6, linuxKeyToHid(&ev));
+                            arrayRemove(keyReport.keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
                         }
                         writeHidReport(hidKbd, &keyReport, sizeof(keyReport));
                         writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
