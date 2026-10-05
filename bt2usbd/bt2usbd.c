@@ -39,7 +39,6 @@
 #include "keyboard.h"
 #include "keymap.h"
 
-
 /* ----------------------------------------------------------------------------------- *
  * Some globals we can't do without... ;)
  * ----------------------------------------------------------------------------------- */
@@ -119,15 +118,12 @@ int main( int argc, char *argv[] ) {
     bool numLockActive  = false;
     
     if (devKbd != NULL) {
-        int capsState = libevdev_get_event_value(devKbd, EV_LED, LED_CAPSL);
-        int numState  = libevdev_get_event_value(devKbd, EV_LED, LED_NUML);
-
-        capsLockActive = (capsState > 0);
-        numLockActive  = (numState > 0);
-
-        writeLog(LOG_INFO, "Initial keyboard LED state: Caps=%s Num=%s",
-                capsLockActive ? "ON" : "OFF",
-                numLockActive  ? "ON" : "OFF");
+        if (readKeyboardLedState(fdKbd, &capsLockActive, &numLockActive)) {
+            writeLog(LOG_INFO, "Resynced keyboard LED state: Caps=%s Num=%s",
+                    capsLockActive ? "ON" : "OFF",
+                    numLockActive  ? "ON" : "OFF");
+            syncCapsLockWithHost(hidKbd, capsLockActive);
+        }
     }
 
     // Main loop
@@ -276,8 +272,7 @@ int main( int argc, char *argv[] ) {
                         */
                         struct input_event drainEv;
  
-                        while (libevdev_next_event(devKbd, LIBEVDEV_READ_FLAG_NORMAL, &drainEv)
-                            == LIBEVDEV_READ_STATUS_SUCCESS) {
+                        while (libevdev_next_event(devKbd, LIBEVDEV_READ_FLAG_NORMAL, &drainEv) == LIBEVDEV_READ_STATUS_SUCCESS) {
                             /* discard - handled on next main loop iteration anyway
                             * is not possible since libevdev already consumed it;
                             * so we re-inject relevant key events manually here if needed.
@@ -291,6 +286,7 @@ int main( int argc, char *argv[] ) {
                             writeLog(LOG_INFO, "Resynced keyboard LED state: Caps=%s Num=%s",
                                     capsLockActive ? "ON" : "OFF",
                                     numLockActive  ? "ON" : "OFF");
+                            syncCapsLockWithHost(hidKbd, capsLockActive);
                         }
                     }
                 }

@@ -306,3 +306,25 @@ bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockA
     
     return false;
 }
+
+void syncCapsLockWithHost(HidDevice *hidKbd, bool capsLockActive) {
+	KeyReport_t report;
+
+	if (hidKbd == NULL || !capsLockActive) {
+		/* Only need to act if the keyboard is actually in the ON
+		 * state - the host always assumes OFF on fresh enumeration.
+		 */
+		return;
+	}
+
+	writeLog(LOG_INFO, "Caps Lock is physically ON - syncing host state");
+
+	initKeyReport(&report);
+	report.keys[0] = hidKeyMap[KEY_CAPSLOCK];
+	writeHidReport(hidKbd, &report, sizeof(report));
+
+	usleep(20000);
+
+	report.keys[0] = 0;
+    writeHidReport(hidKbd, &report, sizeof(report));
+}

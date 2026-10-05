@@ -163,4 +163,20 @@ bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockA
  * *********************************************************************************** */
 bool readKeyboardLedState(int fd, bool *capsLockActive, bool *numLockActive);
 
+/* *********************************************************************************** *
+ * @brief Synchronizes the host's Caps Lock state with the physical
+ *        keyboard's current state by simulating a key press+release
+ *        if they differ.
+ *
+ * USB HID keyboards have no standardized way to proactively inform
+ * the host of their LED state (LED Output Reports only flow from
+ * host to device). The only way to make the host update its internal
+ * state (and thus send a matching LED Output Report back) is to
+ * simulate the actual key press that would normally toggle it.
+ *
+ * @param[in,out] hidKbd HID device used to send the simulated key event
+ * @param[in] capsLockActive Current physical Caps Lock state
+ * *********************************************************************************** */
+void syncCapsLockWithHost(HidDevice *hidKbd, bool capsLockActive);
+
 #endif
