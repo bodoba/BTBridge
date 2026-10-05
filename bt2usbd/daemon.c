@@ -27,22 +27,83 @@
 
 #include "daemon.h"
 
-/* ----------------------------------------------------------------------------------- *
- * Local prototype
- * ----------------------------------------------------------------------------------- */
+/* *********************************************************************************** *
+ * Forward declarations of static functions
+ * *********************************************************************************** */
 static void signalCB( int sigval );
 static void shutdown_daemon(void);
 static void writePid();
 
-/* ----------------------------------------------------------------------------------- *
- * Some local globals
- * ----------------------------------------------------------------------------------- */
+/* *********************************************************************************** *
+ * Globals for daemon management (module scope)
+ * *********************************************************************************** */
 static int        pidFilehandle = 0;         // PID file kept open for daemon
 static const char *pidFile = NULL;           // Name of file to write PID to
 
-/* ----------------------------------------------------------------------------------- *
- * detach from the controlling terminal and run in the background as system daemons
- * ----------------------------------------------------------------------------------- */
+/* *********************************************************************************** *
+ * @brief Create and lock the configured PID file, then write this process's ID.
+ *
+ * @note Exits the process with failure if the PID file cannot be opened or locked.
+ * *********************************************************************************** */
+void writePid() {
+    pidFilehandle = open(pidFile, O_RDWR|O_CREAT, 0600);
+    
+    if (pidFilehandle != -1 ) {                           // Open failed
+        if (lockf(pidFilehandle,F_TLOCK,0) != -1) {       // Try to lock the pid file
+            char buffer[10];
+            sprintf(buffer,"%d\n",getpid());              // Get and format PID
+            write(pidFilehandle, buffer, strlen(buffer)); // write pid to lockfile
+        } else {
+            syslog(LOG_CRIT, "Could not lock PID lock file %s, exiting", pidFile);
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        syslog(LOG_CRIT, "Could not open PID lock file %s, exiting", pidFile);
+        exit(EXIT_FAILURE);
+    }
+}
+
+/* *********************************************************************************** *
+ * @brief Handle a signal received by the daemon.
+ *
+ * SIGHUP is logged without stopping the daemon. SIGINT and SIGTERM trigger
+ * shutdown and then exit successfully; other signals are logged as unhandled.
+ *
+ * @param sigval The number of the signal received.
+ * *********************************************************************************** */
+void signalCB(int sigval)
+{
+    switch(sigval)
+    {
+        case SIGHUP:
+            syslog(LOG_WARNING, "Received SIGHUP signal.");
+            break;
+        case SIGINT:
+        case SIGTERM:
+            syslog(LOG_INFO, "Daemon exiting");
+            shutdown_daemon();
+            exit(EXIT_SUCCESS);
+            break;
+        default:
+            syslog(LOG_WARNING, "Unhandled signal %s", strsignal(sigval));
+            break;
+    }
+}
+
+/* *********************************************************************************** *
+ * @brief Close the PID file and remove it during daemon shutdown.
+ * *********************************************************************************** */
+void shutdown_daemon(void) {
+    syslog(LOG_INFO, "Yard Control shutting down");
+    close(pidFilehandle);
+    unlink(pidFile);
+}
+
+
+/* *********************************************************************************** *
+ * P U B L I C  I N T E R F A C E
+ * *********************************************************************************** */
+
 void daemonize(const char *file) {
     pidFile = file;
     
@@ -53,6 +114,7 @@ void daemonize(const char *file) {
     } else  if (pid > 0) {
         exit(EXIT_SUCCESS);
     }
+
     umask(0);                                // Change the file mode mask
     pid_t sid = setsid();                    // Create a new SID for the child process
     if (sid < 0) {
@@ -75,56 +137,4 @@ void daemonize(const char *file) {
     signal(SIGHUP,  signalCB);               // catch hangup signal
     signal(SIGTERM, signalCB);               // catch term signal
     signal(SIGINT,  signalCB);               // catch interrupt signal
-}
-
-/* ----------------------------------------------------------------------------------- *
- * Write PID file
- * ----------------------------------------------------------------------------------- */
-void writePid() {
-    pidFilehandle = open(pidFile, O_RDWR|O_CREAT, 0600);
-    
-    if (pidFilehandle != -1 ) {                           // Open failed
-        if (lockf(pidFilehandle,F_TLOCK,0) != -1) {       // Try to lock the pid file
-            char buffer[10];
-            sprintf(buffer,"%d\n",getpid());              // Get and format PID
-            write(pidFilehandle, buffer, strlen(buffer)); // write pid to lockfile
-        } else {
-            syslog(LOG_CRIT, "Could not lock PID lock file %s, exiting", pidFile);
-            exit(EXIT_FAILURE);
-        }
-    } else {
-        syslog(LOG_CRIT, "Could not open PID lock file %s, exiting", pidFile);
-        exit(EXIT_FAILURE);
-    }
-}
-
-/* ----------------------------------------------------------------------------------- *
- * there are many ways to die
- * ----------------------------------------------------------------------------------- */
-void signalCB(int sigval)
-{
-    switch(sigval)
-    {
-        case SIGHUP:
-            syslog(LOG_WARNING, "Received SIGHUP signal.");
-            break;
-        case SIGINT:
-        case SIGTERM:
-            syslog(LOG_INFO, "Daemon exiting");
-            shutdown_daemon();
-            exit(EXIT_SUCCESS);
-            break;
-        default:
-            syslog(LOG_WARNING, "Unhandled signal %s", strsignal(sigval));
-            break;
-    }
-}
-
-/* ----------------------------------------------------------------------------------- *
- * shutdwown deamon
- * ----------------------------------------------------------------------------------- */
-void shutdown_daemon(void) {
-    syslog(LOG_INFO, "Yard Control shutting down");
-    close(pidFilehandle);
-    unlink(pidFile);
 }

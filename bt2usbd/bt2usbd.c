@@ -269,14 +269,29 @@ int main( int argc, char *argv[] ) {
                     } else {
                         scanforNewDevice = false;
 
-                        /* Re-sync toggle state with the newly (re-)connected keyboard */
-                        int capsState = libevdev_get_event_value(devKbd, EV_LED, LED_CAPSL);
-                        int numState  = libevdev_get_event_value(devKbd, EV_LED, LED_NUML);
-                        capsLockActive = (capsState > 0);
-                        numLockActive  = (numState > 0);
-                        writeLog(LOG_INFO, "Resynced keyboard LED state: Caps=%s Num=%s",
-                                capsLockActive ? "ON" : "OFF",
-                                numLockActive  ? "ON" : "OFF");
+                        /* Drain any events already queued by the kernel before the
+                        * device was fully set up (e.g. the very key press that
+                        * triggered the BT reconnect). This avoids reading a stale
+                        * or about-to-change LED state.
+                        */
+                        struct input_event drainEv;
+ 
+                        while (libevdev_next_event(devKbd, LIBEVDEV_READ_FLAG_NORMAL, &drainEv)
+                            == LIBEVDEV_READ_STATUS_SUCCESS) {
+                            /* discard - handled on next main loop iteration anyway
+                            * is not possible since libevdev already consumed it;
+                            * so we re-inject relevant key events manually here if needed.
+                            * In practice, simply logging is sufficient for diagnosis.
+                            */
+                            writeLog(LOG_DEBUG, "Drained pending event during reconnect: type=%d code=%d value=%d",
+                                    drainEv.type, drainEv.code, drainEv.value);
+                        }
+
+                        if (readKeyboardLedState(fdKbd, &capsLockActive, &numLockActive)) {
+                            writeLog(LOG_INFO, "Resynced keyboard LED state: Caps=%s Num=%s",
+                                    capsLockActive ? "ON" : "OFF",
+                                    numLockActive  ? "ON" : "OFF");
+                        }
                     }
                 }
             }

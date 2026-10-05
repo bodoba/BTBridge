@@ -26,25 +26,51 @@
 #include <stdbool.h>
 #include <syslog.h>
 
-/*
-  log levels are taken from syslog.h
-  LOG_EMERG    A panic condition was reported to all processes.
-  LOG_ALERT    A condition that should be corrected immediately.
-  LOG_CRIT     A critical condition.
-  LOG_ERR      An error message.
-  LOG_WARNING  A warning message.
-  LOG_NOTICE   A condition requiring special handling.
-  LOG_INFO     A general information message.
-  LOG_DEBUG    A message useful for debugging programs.
- */
+/* *********************************************************************************** *
+ * The log levels are defined in syslog.h
+ *   LOG_EMERG    A panic condition was reported to all processes.
+ *   LOG_ALERT    A condition that should be corrected immediately.
+ *   LOG_CRIT     A critical condition.
+ *   LOG_ERR      An error message.
+ *   LOG_WARNING  A warning message.
+ *   LOG_NOTICE   A condition requiring special handling.
+ *   LOG_INFO     A general information message.
+ *   LOG_DEBUG    A message useful for debugging programs.
+ * *********************************************************************************** */
 
-/* ----------------------------------------------------------------------------------- *
- * Prototypes
- * ----------------------------------------------------------------------------------- */
+/* *********************************************************************************** *
+ * @brief Initialize logging and select the log output destination.
+ *
+ * @param syslog If true, send log messages to the system logger; otherwise, write
+ *               them to standard output.
+ * *********************************************************************************** */
+void initLog( bool syslog );
+
+/* ************************************************************************************
+ * @brief Set the maximum severity level of messages to log.
+ *
+ * @param level The syslog severity level to use.
+ * @return The effective log level after applying the supported upper limit.
+ * *********************************************************************************** */
 int setLogLevel( int level );
+    
+/* *********************************************************************************** *
+ * @brief Get the currently configured log level.
+ *
+ * @return The current syslog severity threshold.
+ * *********************************************************************************** */
 int getLogLevel( void );
 
-void initLog( bool useSyslog );
-void writeLog( int logLevel, const char* format, ... );
+/* *********************************************************************************** *
+ * @brief Write a formatted message if its severity is within the configured threshold.
+ *
+ * Messages are sent to the system logger or standard output, depending on the
+ * destination selected by initLog().
+ *
+ * @param level The syslog severity level of the message.
+ * @param format A printf-style format string.
+ * @param ... Values referenced by the format string.
+ * *********************************************************************************** */
+void writeLog( int level, const char* format,...);
 
 #endif /* logging_h */

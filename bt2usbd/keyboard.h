@@ -147,4 +147,20 @@ static inline void initConsumerReport(ConsumerReport_t *report) {
  * *********************************************************************************** */
 bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive);
 
+/* *********************************************************************************** *
+ * @brief Reads the actual Caps Lock / Num Lock LED state directly from
+ *        the kernel, bypassing any libevdev-internal caching.
+ *
+ * This uses the EVIOCGLED ioctl, which queries the current LED state
+ * of the input device directly from the kernel's input core - this
+ * is the authoritative state, independent of event queue timing.
+ *
+ * @param[in] fd File descriptor of the keyboard input device
+ * @param[out] capsLockActive Set to the current Caps Lock LED state
+ * @param[out] numLockActive  Set to the current Num Lock LED state
+ *
+ * @return true on success, false if the ioctl failed
+ * *********************************************************************************** */
+bool readKeyboardLedState(int fd, bool *capsLockActive, bool *numLockActive);
+
 #endif

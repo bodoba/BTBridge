@@ -23,6 +23,8 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
 
 #include "hidinterface.h"
 #include "logging.h"
@@ -233,8 +235,29 @@ bool arrayRemove(uint8_t *array, size_t max, uint8_t value) {
 	return result;
 }
 
-bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive)
-{
+bool readKeyboardLedState(int fd, bool *capsLockActive, bool *numLockActive) {
+	unsigned long ledBits[/* bits per long */ (LED_MAX / (sizeof(long) * 8)) + 1];
+
+	if (fd < 0 || capsLockActive == NULL || numLockActive == NULL) {
+		return false;
+	}
+
+	memset(ledBits, 0, sizeof(ledBits));
+
+	if (ioctl(fd, EVIOCGLED(sizeof(ledBits)), ledBits) < 0) {
+		writeLog(LOG_WARNING, "EVIOCGLED failed: %s", strerror(errno));
+		return false;
+	}
+
+	*capsLockActive = (ledBits[LED_CAPSL / (sizeof(long) * 8)] >>
+	                    (LED_CAPSL % (sizeof(long) * 8))) & 1;
+	*numLockActive  = (ledBits[LED_NUML / (sizeof(long) * 8)] >>
+	                    (LED_NUML % (sizeof(long) * 8))) & 1;
+
+	return true;
+}
+
+bool processHidLedReport(HidDevice *hidKbd, bool *capsLockActive, bool *numLockActive) {
     if (hidKbd == NULL || hidKbd->fd < 0 || capsLockActive == NULL || numLockActive == NULL) {
         return false;
     }

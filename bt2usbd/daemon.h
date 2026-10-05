@@ -18,11 +18,18 @@
 #ifndef daemon_h
 #define daemon_h
 
-/* ----------------------------------------------------------------------------------- *
- * detach from the controlling terminal and run in the background as system daemons
+/* *********************************************************************************** *
+ * @brief Detach the process from its controlling terminal and run it as a daemon.
  *
- * INPUT: pidFile -> filname to lock and store pid in
- * ----------------------------------------------------------------------------------- */
+ * The parent process exits after forking. The child creates a new session,
+ * changes its working directory to /tmp, redirects standard input, output, and
+ * error to /dev/null, writes its process ID to a locked file, and installs
+ * handlers for SIGHUP, SIGTERM, and SIGINT.
+ *
+ * @param file Path to the PID file to create and lock.
+ *
+ * @note Exits the process with failure if daemon setup or PID-file handling fails.
+ * *********************************************************************************** */
 void daemonize(const char *pidFile);
 
 #endif /* daemon_h */
