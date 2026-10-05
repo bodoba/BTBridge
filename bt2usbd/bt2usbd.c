@@ -106,6 +106,12 @@ int main( int argc, char *argv[] ) {
         writeLog(LOG_ERR, "Failed to initialize HID device for keyboard");
     }
 
+     // HID Device for consumer control events 
+    HidDevice *hidCon = initHidDevice(HID_CONSUMER);
+    if (hidCon == NULL) {
+        writeLog(LOG_ERR, "Failed to initialize HID device for consumer control");
+    }
+
     // report structures
     KeyReport_t    keyReport;
     initKeyReport(&keyReport);
@@ -190,7 +196,7 @@ int main( int argc, char *argv[] ) {
 
                     case KEY_TYPE_CONSUMER_CONTROL:
                         linuxKeyToConsumer(&consumerReport, &ev);
-                        //writeReport(fdHidKbd, &consumerReport, sizeof(consumerReport));
+                        writeHidReport(hidCon, &consumerReport, sizeof(consumerReport));
                         writeLog( LOG_DEBUG, "C 0x%02x 0x%02x                               | %s",
                             consumerReport.keys[0], consumerReport.keys[1],
                             libevdev_event_code_get_name( ev.type,ev.code)
