@@ -104,9 +104,14 @@ uint8_t updateMouseButtonState(uint8_t buttons, const struct input_event *ev)
 
 int8_t clampMouseMovement(int value)
 {
-    if (value > 127) return 127;
-    if (value < -127) return -127;
-    return (int8_t)value;
+    float scaled = (float)value * MOUSE_SENSITIVITY;  /* Apply sensitivity multiplier */
+
+    /* round to nearest instead of truncating, important for values < 1.0 */
+    int rounded = (int)(scaled >= 0 ? scaled + 0.5f : scaled - 0.5f);
+
+    if (rounded > 127) return 127;
+    if (rounded < -127) return -127;
+    return (int8_t)rounded;
 }
 
 void processMouseEvent(struct libevdev *devMouse, MouseReport_t *mouseReport, int *fdMouse, HidDevice *hidMouse) {

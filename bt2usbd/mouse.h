@@ -24,6 +24,16 @@
 #include "hidinterface.h"
 
 /* *********************************************************************************** *
+ * @brief Mouse movement sensitivity multiplier.
+ *
+ * Linux delivers relatively small REL_X/REL_Y deltas per report. This
+ * factor scales raw movement before clamping to the HID report range,
+ * allowing the perceived cursor speed to be tuned without touching the
+ * input device's own acceleration settings.
+ * *********************************************************************************** */
+#define MOUSE_SENSITIVITY 0.5f
+
+/* *********************************************************************************** *
  * @struct MouseReport_t
  * @brief Structure representing a standard USB HID boot mouse report.
  *
