@@ -86,4 +86,19 @@ uint8_t updateMouseButtonState(uint8_t buttons, const struct input_event *ev);
  * *********************************************************************************** */
 int8_t clampMouseMovement(int value);
 
+/* *********************************************************************************** *
+ * @brief Processes pending input events from a mouse device.
+ *
+ * Updates the mouse report with button and relative movement events, then
+ * sends it through the HID mouse device at the end of each input packet.
+ * If the input device is disconnected, frees its libevdev context, closes
+ * its file descriptor, and sets the descriptor to -1.
+ *
+ * @param[in] devMouse libevdev context for the mouse input device.
+ * @param[in,out] mouseReport Mouse report updated with button and movement state.
+ * @param[in,out] fdMouse Mouse input file descriptor; set to -1 on disconnection.
+ * @param[in] hidMouse HID device used to send mouse reports.
+ * *********************************************************************************** */
+void processMouseEvent(struct libevdev *devMouse, MouseReport_t *mouseReport, int *fdMouse, HidDevice *hidMouse);
+
 #endif

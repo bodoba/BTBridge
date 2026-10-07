@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 #include "logging.h"
 #include "mouse.h"
@@ -106,4 +107,68 @@ int8_t clampMouseMovement(int value)
     if (value > 127) return 127;
     if (value < -127) return -127;
     return (int8_t)value;
+}
+
+void processMouseEvent(struct libevdev *devMouse, MouseReport_t *mouseReport, int *fdMouse, HidDevice *hidMouse) {
+    struct input_event ev;
+    int rcEv;
+    bool reportDirty = false;
+
+    while ((rcEv = libevdev_next_event(devMouse, LIBEVDEV_READ_FLAG_NORMAL, &ev)) == LIBEVDEV_READ_STATUS_SUCCESS) {
+
+        switch (ev.type) {
+        case EV_KEY:
+            mouseReport->buttons = updateMouseButtonState(mouseReport->buttons, &ev);
+            reportDirty = true;
+            break;
+
+        case EV_REL:
+            switch (ev.code) {
+            case REL_X:
+                mouseReport->x = clampMouseMovement(ev.value);
+                reportDirty = true;
+                break;
+
+            case REL_Y:
+                mouseReport->y = clampMouseMovement(ev.value);
+                reportDirty = true;
+                break;
+
+            case REL_WHEEL:
+                mouseReport->wheel = clampMouseMovement(ev.value);
+                reportDirty = true;
+                break;
+
+            default:
+                break;
+            }
+            break;
+
+        case EV_SYN:
+            /* SYN_REPORT marks the end of one input packet - send it now */
+            if (ev.code == SYN_REPORT && reportDirty) {
+                writeHidReport(hidMouse, mouseReport, sizeof(*mouseReport));
+                writeLog(LOG_DEBUG, "M btn=0x%02x x=%d y=%d wheel=%d",
+                        mouseReport->buttons, mouseReport->x, mouseReport->y, mouseReport->wheel);
+
+                /* relative movement must be reset after sending, buttons stay persistent */
+                mouseReport->x = 0;
+                mouseReport->y = 0;
+                mouseReport->wheel = 0;
+                reportDirty = false;
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (rcEv == -ENODEV) {
+        writeLog(LOG_INFO, "Mouse disconnected");
+        libevdev_free(devMouse);
+        devMouse = NULL;
+        close(*fdMouse);
+        *fdMouse = -1;
+    }
 }
