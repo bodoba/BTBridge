@@ -30,3 +30,8 @@ The idea is to pair Bluetooth keyboard and mouse witha low end Linux device (in 
      |    PC #1    |   |    PC #2    |
      +-------------+   +-------------+
 ```
+
+
+**To Do**
+
+* Setup HID-Collection for "System Controll", enable sleep-key functionality

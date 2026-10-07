@@ -158,6 +158,11 @@ echo 2 > functions/hid.usb2/report_length
 printf '\x05\x0C\x09\x01\xA1\x01\x15\x00\x26\xFF\x03\x19\x00\x2A\xFF\x03\x75\x10\x95\x01\x81\x00\xC0' \
 > functions/hid.usb2/report_desc
 
+###############################################################################
+# HID FUNCTION #4 : SYSTEM CONTROL
+###############################################################################
+
+# To be implemented in the future 
 
 ###############################################################################
 # ENABLE FUNCTIONS
