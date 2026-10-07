@@ -189,4 +189,21 @@ bool readKeyboardLedState(int fd, bool *capsLockActive, bool *numLockActive);
  * *********************************************************************************** */
 void syncCapsLockWithHost(HidDevice *hidKbd, bool capsLockActive);
 
+/**
+ * @brief Process all pending events from the keyboard input device.
+ *
+ * Keyboard events are classified and translated into keyboard or consumer
+ * control HID reports. Auto-repeat and non-key events are ignored. If the
+ * keyboard device is disconnected, its libevdev context is freed and its file
+ * descriptor is closed and set to -1.
+ *
+ * @param[in] devKbd libevdev context for the keyboard input device.
+ * @param[in,out] keyReport Keyboard HID report updated for regular and modifier keys.
+ * @param[in,out] consumerReport Consumer Control HID report updated for consumer keys.
+ * @param[in,out] fdKbd Keyboard input file descriptor; set to -1 on disconnection.
+ * @param[in] hidKbd HID device used to send keyboard reports.
+ * @param[in] hidCon HID device used to send Consumer Control reports.
+ */
+void processKeyboardEvent(struct libevdev *devKbd, KeyReport_t *keyReport, ConsumerReport_t *consumerReport, int *fdKbd, HidDevice *hidKbd, HidDevice *hidCon);
+
 #endif

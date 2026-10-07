@@ -332,3 +332,89 @@ void syncCapsLockWithHost(HidDevice *hidKbd, bool capsLockActive) {
 	report.keys[0] = 0;
     writeHidReport(hidKbd, &report, sizeof(report));
 }
+
+void processKeyboardEvent(struct libevdev *devKbd, KeyReport_t *keyReport, ConsumerReport_t *consumerReport, int *fdKbd, HidDevice *hidKbd, HidDevice *hidCon) {
+
+    if (devKbd == NULL) {
+		return;
+	}
+
+     // Read all pending events
+    struct input_event ev;
+    int rcEv;
+
+    while ((rcEv = libevdev_next_event( devKbd, LIBEVDEV_READ_FLAG_NORMAL, &ev)) == LIBEVDEV_READ_STATUS_SUCCESS) {
+    
+        // ignore non keyboard events
+        if (ev.type != EV_KEY) continue;
+    
+        // Ignore auto-repeat
+        if (ev.value == 2) continue;
+
+        // process event
+        KeyType_t eventClass = classifyKeyEvent(&ev);
+    
+        switch (eventClass) {
+            case KEY_TYPE_MODIFIER:
+                keyReport->modifier = updateModifierState(keyReport->modifier, &ev);
+                if(ev.value != 0) { // Key press
+                    arrayAdd(keyReport->keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
+                } else {           // key release
+                    arrayRemove(keyReport->keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
+                }
+                writeHidReport(hidKbd, &keyReport, sizeof(keyReport));
+                writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
+                    keyReport->modifier,
+                    keyReport->keys[0], keyReport->keys[1], keyReport->keys[2],
+                    keyReport->keys[3], keyReport->keys[4], keyReport->keys[5],
+                    libevdev_event_code_get_name( ev.type,ev.code)
+                );                        
+                break;
+
+            case KEY_TYPE_CONSUMER_CONTROL:
+                linuxKeyToConsumer(consumerReport, &ev);
+                writeHidReport(hidCon, consumerReport, sizeof(*consumerReport));
+                writeLog( LOG_DEBUG, "C 0x%02x 0x%02x                               | %s",
+                    consumerReport->keys[0], consumerReport->keys[1],
+                    libevdev_event_code_get_name( ev.type,ev.code)
+                );
+                break;
+
+            case KEY_TYPE_REGULAR:
+            case KEY_TYPE_CAPS_LOCK:       // Caps Lock key
+            case KEY_TYPE_TOGGLE_KEY:      // Toggle-Keys (Num Lock, Scroll Lock) 
+
+                if(ev.value != 0) { // Key press
+                    arrayAdd(keyReport->keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
+                } else {           // key release
+                    arrayRemove(keyReport->keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
+                }
+                writeHidReport(hidKbd, keyReport, sizeof(*keyReport));
+                writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
+                    keyReport->modifier,
+                    keyReport->keys[0], keyReport->keys[1], keyReport->keys[2],
+                    keyReport->keys[3], keyReport->keys[4], keyReport->keys[5],
+                    libevdev_event_code_get_name( ev.type,ev.code)
+                );                        
+                
+                break;
+
+            case KEY_TYPE_IGNORE:
+                    writeLog(LOG_DEBUG, "Ignored key (no HID mapping): %s", libevdev_event_code_get_name(ev.type, ev.code));
+                break;
+
+            case KEY_TYPE_INVALID:
+            default:
+                writeLog(LOG_ERR, "Unknown key: %s", libevdev_event_code_get_name( ev.type,ev.code));
+                break;
+        }
+    }
+
+    if (rcEv == -ENODEV) {
+        writeLog(LOG_INFO, "Keyboard disconnected");
+        libevdev_free(devKbd);
+        devKbd = NULL;
+        close(*fdKbd);
+        *fdKbd = -1;
+    }
+}
