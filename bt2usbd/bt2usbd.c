@@ -38,6 +38,7 @@
 #include "hidinterface.h"
 #include "keyboard.h"
 #include "keymap.h"
+#include "mouse.h"
 
 /* ----------------------------------------------------------------------------------- *
  * Some globals we can't do without... ;)
@@ -50,7 +51,9 @@ bool   foreground         = false;             // run in foreground, not as daem
  * ----------------------------------------------------------------------------------- */
 int main( int argc, char *argv[] ) {
     
-    // Process command line options --------------------------------------------------
+    /* *********************************************************************************** *
+     * Process command line arguments
+     * *********************************************************************************** */ 
     for (int i=0; i<argc; i++) {
         if (!strcmp(argv[i], "-d")) {          // '-d' turns debug mode on
             debug++;
@@ -60,7 +63,9 @@ int main( int argc, char *argv[] ) {
         }
     }
     
-    // initialize logging channel -----------------------------------------------------
+    /* *********************************************************************************** *
+     * Initialize logging
+     * *********************************************************************************** */ 
     initLog(!foreground);
     setLogLevel(LOG_NOTICE+debug);
         
@@ -70,11 +75,10 @@ int main( int argc, char *argv[] ) {
     } else {
         writeLog(LOG_NOTICE, "Running in foreground");
     }
-        
-//    int  devMouse  = -1;
-//    char pathMouse[MAX_PATH_LENGTH];
 
-    // Watch input device list
+    /* *********************************************************************************** *
+     * Setup select()
+     * *********************************************************************************** */ 
     int fdNotify = inotify_init1(IN_NONBLOCK);
     inotify_add_watch( fdNotify, "/dev/input", IN_CREATE | IN_DELETE);
     
@@ -88,7 +92,9 @@ int main( int argc, char *argv[] ) {
 
     bool scanforNewDevice = false;
            
-    // Bluetooth Keyboard connected?
+    /* *********************************************************************************** *
+     * Handle Bluetooth Keyboard
+     * *********************************************************************************** */ 
     int  fdKbd              = -1;
     struct libevdev *devKbd = NULL;
     fdKbd = findKeyboard();
@@ -132,7 +138,32 @@ int main( int argc, char *argv[] ) {
         }
     }
 
-    // Main loop
+    /* *********************************************************************************** *
+     * Handle Bluetooth Mouse
+     * *********************************************************************************** */ 
+    int  fdMouse              = -1;
+    struct libevdev *devMouse = NULL;
+    fdMouse = findMouse();
+    if (fdMouse >= 0) {
+        if (libevdev_new_from_fd(fdMouse, &devMouse) < 0) {
+            writeLog(LOG_ERR, "Failed to create libevdev instance for mouse");
+            close(fdMouse);
+            fdMouse = -1;
+        }
+    }
+
+    // HID Device for mouse events
+    HidDevice *hidMouse = initHidDevice(HID_MOUSE);
+    if (hidMouse == NULL) {
+        writeLog(LOG_ERR, "Failed to initialize HID device for mouse");
+    }
+
+    MouseReport_t mouseReport;
+    initMouseReport(&mouseReport);
+
+    /* *********************************************************************************** *
+     * From her to eternity... ;)
+     * *********************************************************************************** */ 
     for (;;) {
         FD_ZERO(&readfds);
         int maxFd = -1;
@@ -149,10 +180,16 @@ int main( int argc, char *argv[] ) {
             if (fdNotify > maxFd) maxFd = fdNotify;
         }
 
-         // Check keyboard HID device (for LED-Reports by host)
+        // Check keyboard HID device (for LED-Reports by host)
         if (hidKbd != NULL && hidKbd->fd >= 0) {
             FD_SET(hidKbd->fd, &readfds);
             if (hidKbd->fd > maxFd) maxFd = hidKbd->fd;
+        }
+
+        // Check mouse input device
+        if (fdMouse >= 0) {
+            FD_SET(fdMouse, &readfds);
+            if (fdMouse > maxFd) maxFd = fdMouse;
         }
 
         // wait until something happends, but no longer than one second
@@ -234,6 +271,10 @@ int main( int argc, char *argv[] ) {
                         
                         break;
 
+                    case KEY_TYPE_IGNORE:
+                         writeLog(LOG_DEBUG, "Ignored key (no HID mapping): %s", libevdev_event_code_get_name(ev.type, ev.code));
+                        break;
+
                     case KEY_TYPE_INVALID:
                     default:
                         writeLog(LOG_ERR, "Unknown key: %s", libevdev_event_code_get_name( ev.type,ev.code));
@@ -248,6 +289,71 @@ int main( int argc, char *argv[] ) {
                 close(fdKbd);
                 fdKbd = -1;
            }
+        }
+
+        // Process mouse events
+        if (fdMouse >= 0 && FD_ISSET(fdMouse, &readfds)) {
+            struct input_event ev;
+            int rcEv;
+            bool reportDirty = false;
+
+            while ((rcEv = libevdev_next_event(devMouse, LIBEVDEV_READ_FLAG_NORMAL, &ev)) == LIBEVDEV_READ_STATUS_SUCCESS) {
+
+                switch (ev.type) {
+                case EV_KEY:
+                    mouseReport.buttons = updateMouseButtonState(mouseReport.buttons, &ev);
+                    reportDirty = true;
+                    break;
+
+                case EV_REL:
+                    switch (ev.code) {
+                    case REL_X:
+                        mouseReport.x = clampMouseMovement(ev.value);
+                        reportDirty = true;
+                        break;
+
+                    case REL_Y:
+                        mouseReport.y = clampMouseMovement(ev.value);
+                        reportDirty = true;
+                        break;
+
+                    case REL_WHEEL:
+                        mouseReport.wheel = clampMouseMovement(ev.value);
+                        reportDirty = true;
+                        break;
+
+                    default:
+                        break;
+                    }
+                    break;
+
+                case EV_SYN:
+                    /* SYN_REPORT marks the end of one input packet - send it now */
+                    if (ev.code == SYN_REPORT && reportDirty) {
+                        writeHidReport(hidMouse, &mouseReport, sizeof(mouseReport));
+                        writeLog(LOG_DEBUG, "M btn=0x%02x x=%d y=%d wheel=%d",
+                                mouseReport.buttons, mouseReport.x, mouseReport.y, mouseReport.wheel);
+
+                        /* relative movement must be reset after sending, buttons stay persistent */
+                        mouseReport.x = 0;
+                        mouseReport.y = 0;
+                        mouseReport.wheel = 0;
+                        reportDirty = false;
+                    }
+                    break;
+
+                default:
+                    break;
+                }
+            }
+
+            if (rcEv == -ENODEV) {
+                writeLog(LOG_INFO, "Mouse disconnected");
+                libevdev_free(devMouse);
+                devMouse = NULL;
+                close(fdMouse);
+                fdMouse = -1;
+            }
         }
 
         // changes of input device list?
@@ -307,6 +413,18 @@ int main( int argc, char *argv[] ) {
                                     numLockActive  ? "ON" : "OFF");
                             syncCapsLockWithHost(hidKbd, capsLockActive);
                         }
+                    }
+                }
+            }
+      
+            // Mouse added?
+            if (fdMouse < 0) {
+                fdMouse = findMouse();
+                if (fdMouse >= 0) {
+                    if (libevdev_new_from_fd(fdMouse, &devMouse) < 0) {
+                        writeLog(LOG_ERR, "Failed to create libevdev instance for mouse");
+                        close(fdMouse);
+                        fdMouse = -1;
                     }
                 }
             }
