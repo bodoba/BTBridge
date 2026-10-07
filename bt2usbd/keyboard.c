@@ -138,6 +138,10 @@ KeyType_t classifyKeyEvent(const struct input_event *ev) {
                     result = KEY_TYPE_CONSUMER_CONTROL;
                     break;
 
+                case KEY_FN:
+                    result = KEY_TYPE_IGNORE;  /**< Function key is not a standard HID key */
+                    break;
+
                 default:
                     result = KEY_TYPE_REGULAR;
                     break;

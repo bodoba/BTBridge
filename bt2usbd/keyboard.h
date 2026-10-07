@@ -49,7 +49,8 @@ typedef enum {
     KEY_TYPE_CONSUMER_CONTROL,
     KEY_TYPE_REGULAR,
     KEY_TYPE_TOGGLE_KEY,
-    KEY_TYPE_CAPS_LOCK
+    KEY_TYPE_CAPS_LOCK,
+    KEY_TYPE_IGNORE
 } KeyType_t;
 
 /* *********************************************************************************** *

@@ -138,10 +138,11 @@ static const uint8_t hidKeyMap[KEY_MAX + 1] = {
     [KEY_KP9]         = 0x61,
     [KEY_KP0]         = 0x62,
     [KEY_KPDOT]       = 0x63,
+    [KEY_102ND]       = 0x64,  /**< ISO keyboard: additional key next to left shift (< > |) */
 
     /* Apple specials */
     [KEY_MENU]      = 0x65,
-    [KEY_SYSRQ]     = 0x46,
+    [KEY_SYSRQ]     = 0x46,  
     [KEY_PAUSE]     = 0x48,
 };
 

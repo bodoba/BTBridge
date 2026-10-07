@@ -93,7 +93,7 @@ int main( int argc, char *argv[] ) {
     bool scanforNewDevice = false;
            
     /* *********************************************************************************** *
-     * Handle Bluetooth Keyboard
+     * Initialize Bluetooth Keyboard
      * *********************************************************************************** */ 
     int  fdKbd              = -1;
     struct libevdev *devKbd = NULL;
@@ -139,7 +139,7 @@ int main( int argc, char *argv[] ) {
     }
 
     /* *********************************************************************************** *
-     * Handle Bluetooth Mouse
+     * Setup Bluetooth Mouse
      * *********************************************************************************** */ 
     int  fdMouse              = -1;
     struct libevdev *devMouse = NULL;
