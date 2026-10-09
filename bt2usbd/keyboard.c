@@ -362,7 +362,7 @@ void processKeyboardEvent(struct libevdev *devKbd, KeyReport_t *keyReport, Consu
                 } else {           // key release
                     arrayRemove(keyReport->keys, MAX_SIMULTANEOUS_KEYS, linuxKeyToHid(&ev));
                 }
-                writeHidReport(hidKbd, &keyReport, sizeof(keyReport));
+                writeHidReport(hidKbd, keyReport, sizeof(*keyReport));
                 writeLog( LOG_DEBUG, "K 0x%02x 0x00 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x | %s",
                     keyReport->modifier,
                     keyReport->keys[0], keyReport->keys[1], keyReport->keys[2],
