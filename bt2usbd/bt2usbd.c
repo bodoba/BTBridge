@@ -61,6 +61,11 @@ int main( int argc, char *argv[] ) {
         if (!strcmp(argv[i], "-f")) {          // '-f' forces forground mode
             foreground=true;
         }
+        if (!strcmp(argv[i], "-s")) {          // '-s' sets mouse sensitivity
+            if (i + 1 < argc) {
+                mouseSensitivity = atof(argv[i+1]);
+            }
+        }
     }
     
     /* *********************************************************************************** *
@@ -161,6 +166,12 @@ int main( int argc, char *argv[] ) {
     MouseReport_t mouseReport;
     initMouseReport(&mouseReport);
 
+    ScrollMomentum_t scrollMomentum;
+    initScrollMomentum(&scrollMomentum);
+
+    ScrollSmoother_t scrollSmoother;
+    initScrollSmoother(&scrollSmoother);
+
     /* *********************************************************************************** *
      * From her to eternity... ;)
      * *********************************************************************************** */ 
@@ -192,9 +203,13 @@ int main( int argc, char *argv[] ) {
             if (fdMouse > maxFd) maxFd = fdMouse;
         }
 
-        // wait until something happends, but no longer than one second
-        tv.tv_sec  = 1; 
-        tv.tv_usec = 0;
+        if (scrollMomentumNeedsFastTick(&scrollMomentum)) {
+            tv.tv_sec  = 0;
+            tv.tv_usec = SCROLL_MOMENTUM_TICK_MS * 1000;
+        } else {
+            tv.tv_sec  = 1;
+            tv.tv_usec = 0;
+        }
         int rc = select( maxFd + 1, &readfds, NULL, NULL, &tv);
         
         if ( rc < 0 ) {
@@ -216,8 +231,11 @@ int main( int argc, char *argv[] ) {
 
         // Process mouse events
         if (fdMouse >= 0 && FD_ISSET(fdMouse, &readfds)) {
-            processMouseEvent(devMouse, &mouseReport, &fdMouse, hidMouse);
+            processMouseEvent(devMouse, &mouseReport, &fdMouse, hidMouse, &scrollMomentum, &scrollSmoother);
         }
+
+        // Update scroll momentum if active
+        updateScrollMomentum(&scrollMomentum, &mouseReport, hidMouse);
 
         // changes of input device list?
         if (fdNotify >= 0 && FD_ISSET(fdNotify, &readfds)) {
